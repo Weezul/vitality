@@ -1,0 +1,12 @@
+{
+  "domain": "vitality",
+  "name": "Vitality",
+  "codeowners": [],
+  "config_flow": true,
+  "dependencies": ["websocket_api"],
+  "documentation": "https://github.com/Weezul/vitality",
+  "integration_type": "service",
+  "iot_class": "local_push",
+  "requirements": [],
+  "version": "1.0.0"
+}

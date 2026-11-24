@@ -1,0 +1,190 @@
+log_event:
+  name: Log activity
+  description: Record one occurrence of a configured activity.
+  fields:
+    activity_type:
+      name: Activity type
+      description: Configured stable ID, name or alias.
+      required: true
+      selector:
+        text:
+    quantity:
+      name: Quantity
+      description: Positive finite quantity. Defaults to 1.
+      selector:
+        number:
+          min: 0
+          mode: box
+    unit:
+      name: Unit
+      description: Optional unit override.
+      selector:
+        text:
+    occurred_at:
+      name: Occurred at
+      description: ISO 8601 timestamp with offset. Omit on create to use now.
+      selector:
+        text:
+    notes:
+      name: Notes
+      description: Optional diary context.
+      selector:
+        text:
+          multiline: true
+    duration_minutes:
+      name: Duration
+      description: Optional duration in minutes.
+      selector:
+        number:
+          min: 0
+          mode: box
+          unit_of_measurement: min
+
+log_checkin:
+  name: Log check-in
+  description: Record a subjective score.
+  fields:
+    kind:
+      name: Check-in type
+      description: Choose morning, evening or other.
+      required: true
+      selector:
+        select:
+          options:
+            - morning
+            - evening
+            - other
+    score:
+      name: Score
+      description: Subjective score from 0 to 100.
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+          mode: slider
+    occurred_at:
+      name: Occurred at
+      description: ISO 8601 timestamp with offset. Omit on create to use now.
+      selector:
+        text:
+    notes:
+      name: Notes
+      description: Optional diary context.
+      selector:
+        text:
+          multiline: true
+
+update_event:
+  name: Update activity
+  description: Update one manual activity by record ID.
+  fields:
+    id:
+      name: Record ID
+      description: Stable ID from Vitality history or CSV.
+      required: true
+      selector:
+        text:
+    activity_type:
+      name: Activity type
+      description: Configured stable ID, name or alias.
+      selector:
+        text:
+    quantity:
+      name: Quantity
+      description: Positive finite quantity. Defaults to 1.
+      selector:
+        number:
+          min: 0
+          mode: box
+    unit:
+      name: Unit
+      description: Optional unit override.
+      selector:
+        text:
+    occurred_at:
+      name: Occurred at
+      description: ISO 8601 timestamp with offset. Omit on create to use now.
+      selector:
+        text:
+    notes:
+      name: Notes
+      description: Optional diary context.
+      selector:
+        text:
+          multiline: true
+    duration_minutes:
+      name: Duration
+      description: Optional duration in minutes.
+      selector:
+        number:
+          min: 0
+          mode: box
+          unit_of_measurement: min
+
+update_checkin:
+  name: Update check-in
+  description: Update one check-in by record ID.
+  fields:
+    id:
+      name: Record ID
+      description: Stable ID from Vitality history or CSV.
+      required: true
+      selector:
+        text:
+    kind:
+      name: Check-in type
+      description: Choose morning, evening or other.
+      selector:
+        select:
+          options:
+            - morning
+            - evening
+            - other
+    score:
+      name: Score
+      description: Subjective score from 0 to 100.
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+          mode: slider
+    occurred_at:
+      name: Occurred at
+      description: ISO 8601 timestamp with offset. Omit on create to use now.
+      selector:
+        text:
+    notes:
+      name: Notes
+      description: Optional diary context.
+      selector:
+        text:
+          multiline: true
+
+delete_event:
+  name: Delete activity
+  description: Delete one manual activity by record ID.
+  fields:
+    id:
+      name: Record ID
+      description: Stable ID from Vitality history or CSV.
+      required: true
+      selector:
+        text:
+
+delete_checkin:
+  name: Delete check-in
+  description: Delete one check-in by record ID.
+  fields:
+    id:
+      name: Record ID
+      description: Stable ID from Vitality history or CSV.
+      required: true
+      selector:
+        text:
+
+resync_garmin:
+  name: Resync Garmin cache
+  description: Read existing Home Assistant states without refreshing Garmin Connect.

@@ -1,0 +1,11 @@
+{
+  "list": [
+    {"activityId": 101, "activityName": "Fixture evening run", "activityType": "running",
+     "startTime": "2026-11-24T18:00:00+01:00", "duration": 1800, "distance": 5000,
+     "averageHR": 123, "startLatitude": 1, "polyline": "excluded fixture field"},
+    {"activityId": 102, "activityName": "Fixture morning ride", "activityType": {"typeKey": "cycling"},
+     "startTimeGMT": "2026-11-24T07:15:00", "duration": 2340}
+  ],
+  "latest": {"activityId": 101, "activityName": "Fixture evening run updated", "activityType": "running",
+             "startTime": "2026-11-24T18:00:00+01:00", "duration": 1860}
+}

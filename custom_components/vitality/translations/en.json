@@ -1,0 +1,21 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up Vitality",
+        "description": "Vitality stores your diary locally. Only administrators can use the diary dashboard.",
+        "data": {"expose_scores": "Expose latest scores as Home Assistant sensors"}
+      }
+    },
+    "abort": {"already_configured": "A Vitality diary is already configured."}
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Vitality privacy",
+        "description": "Other Home Assistant users may be able to see exposed sensor states.",
+        "data": {"expose_scores": "Expose latest scores as Home Assistant sensors"}
+      }
+    }
+  }
+}

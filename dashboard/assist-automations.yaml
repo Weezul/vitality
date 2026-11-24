@@ -1,0 +1,25 @@
+# Import these as two automations or append both list items to automations.yaml.
+- id: vitality_assist_log_coffee
+  alias: Vitality - log coffee with Assist
+  triggers:
+    - trigger: conversation
+      command: "log coffee"
+  actions:
+    - action: vitality.log_event
+      data:
+        activity_type: coffee
+    - set_conversation_response: "Coffee logged."
+  mode: queued
+
+- id: vitality_assist_morning_energy
+  alias: Vitality - log morning energy with Assist
+  triggers:
+    - trigger: conversation
+      command: "log morning energy {0..100:score}"
+  actions:
+    - action: vitality.log_checkin
+      data:
+        kind: morning
+        score: "{{ trigger.slots.score | int }}"
+    - set_conversation_response: "Morning energy logged."
+  mode: queued

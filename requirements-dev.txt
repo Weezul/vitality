@@ -1,0 +1,5 @@
+homeassistant==2026.11.3
+hassil==3.12.1
+pytest>=9,<10
+ruff>=0.11,<1
+tzdata

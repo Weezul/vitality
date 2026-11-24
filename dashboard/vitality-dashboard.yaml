@@ -1,0 +1,9 @@
+title: Vitality
+views:
+  - title: Diary
+    path: diary
+    icon: mdi:heart-pulse
+    type: panel
+    cards:
+      - type: custom:vitality-card
+        title: Vitality diary
