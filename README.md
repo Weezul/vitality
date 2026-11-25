@@ -7,21 +7,63 @@ Vitality is a single-user diary for Home Assistant. Log subjective energy, reste
 The target is Home Assistant Core **2026.11.3**. Use an administrator account. The Garmin Connect integration is optional for manual logging.
 
 1. Copy the repository’s entire `custom_components/vitality/` directory into `/config/custom_components/vitality/` on Home Assistant, using your existing configuration file access. Keep its subdirectories. Restart Home Assistant.
-2. Go to **Settings → Devices & services → Add integration**, search for **Vitality**, and finish the setup. Leave score sensors off if other users should be unable to read the latest scores.
+2. Go to **Settings → Devices & services → Add integration**, search for **Vitality**, and finish the setup. Leave the sensor options off if diary statistics should stay visible only to administrators.
 3. Copy `dashboard/vitality-card.js` to `/config/www/vitality-card.js`, creating `www` if needed. Restart if this is the first time you created `www`.
-4. Open **Settings → Dashboards → Resources** and add `/local/vitality-card.js?v=1` as a **JavaScript module**. Enable **Advanced mode** in your HA profile if the Resources menu is hidden.
-5. Create an empty dashboard from **Settings → Dashboards**. In the new dashboard, choose **Edit dashboard → ⋮ → Raw configuration editor** and paste `dashboard/vitality-dashboard.yaml`. To use an existing dashboard, add a manual card with `type: custom:vitality-card`.
-6. Open the diary and expand **Manage activity types**. For example, create `coffee` named **Coffee**, category **Caffeine**, default unit `cup`, alias `espresso`. Add any other types the same way. Stable IDs preserve historical grouping after a rename. Archiving hides the type from new logs and preserves its history.
+4. Open **Settings → Dashboards → Resources** and add `/local/vitality-card.js?v=3` as a **JavaScript module**. Enable **Advanced mode** in your HA profile if the Resources menu is hidden.
+5. Add the cards to the dashboards of your choice using the card picker or manual card YAML below. For a single dashboard with four views, paste `dashboard/vitality-dashboard.yaml` into **Edit dashboard → ⋮ → Raw configuration editor**.
+6. Open **Vitality Settings → Manage activity types**. For example, create `coffee` named **Coffee**, category **Caffeine**, default unit `cup`, alias `espresso`. Stable IDs preserve historical grouping after a rename. Archiving hides the type from new logs and preserves its history.
 
 [Home Assistant dashboard resources and custom cards](https://contributors.home-assistant.io/frontend/custom-ui/card/)
 
+For an existing installation, copy the supplied `brand/` folder to `/config/custom_components/vitality/brand/` to add the Vitality icon. Restart Home Assistant and refresh **Settings → Devices & services**. Home Assistant Core 2026.3 and later loads these images automatically. [Home Assistant integration branding](https://contributors.home-assistant.io/core/integrations/brands/)
+
+## Choose your dashboard cards
+
+Add each YAML block as its own manual card. The weekly card opens to the last seven local calendar days and supports longer or custom ranges. The daily card opens to today and lets you pick another date.
+
+```yaml
+type: custom:vitality-log-card
+```
+
+```yaml
+type: custom:vitality-stats-card
+period: day
+```
+
+```yaml
+type: custom:vitality-stats-card
+period: week
+```
+
+```yaml
+type: custom:vitality-config-card
+```
+
+## Use Vitality with built-in cards
+
+Open **Settings → Devices & services → Vitality → Configure** and enable **Expose daily and weekly statistics as Home Assistant sensors**. Find the resulting entities by searching for **Vitality** in the entity picker. Add them to an Entities, Tile, or other compatible card.
+
+- Manual activity counts for today and the last seven days, both overall and for each activity type. For example, look for **Vitality Coffee today** once you create Coffee. Counts measure occurrences.
+- Morning and evening energy for today, plus seven-day averages of the latest score per day. Days with missing scores are omitted from the averages.
+- Latest and average mood for today, plus the seven-day average of daily mood averages. Days without ratings are omitted.
+- Garmin workout counts for today and the last seven days, today's sleep score, and today's latest observed Body Battery. The weekly workout count reports the number of days with recorded workout data in its attributes.
+
+The seven-day window includes today in Home Assistant's timezone. Entities with a missing reading show **Unknown**. The separate latest-score option exposes the last morning and evening check-ins, with their timestamps, even when they were logged on a previous date. Other Home Assistant users may be able to read enabled entities.
+
+### Upgrade from the 0–100 scale
+
+Back up the database before upgrading. Vitality converts saved subjective scores by dividing by 10, rounding to the nearest whole number with halves rounded up, and applying a minimum of 1. For example, 0 becomes 1, 45 becomes 5, and 100 becomes 10. Update automations or scripts that send scores, and replace the existing Assist energy example if you use it. Recorder history for existing latest-score entities can contain earlier 0–100 values.
+
+If a form still asks for a score out of 100, update both the integration directory and the dashboard JavaScript. Restart Home Assistant, edit the existing dashboard resource to use `/local/vitality-card.js?v=3`, and reload the dashboard. For Assist, replace the old morning-energy sentence automation with the supplied 1–10 version and reload automations.
+
 ## Log, review and compare
 
-- The diary supports morning, evening and other check-ins on a 0–100 scale. Save explicitly. The two daily score lines show the latest score of each kind on that day. The timeline retains all entries.
+- The diary supports morning, evening and other check-ins on a whole-number scale from 1 (exhausted) to 10 (fully energised). Save explicitly. The two daily score lines show the latest score of each kind on that day. The timeline retains all entries.
+- Use **Rate mood** to log a whole number from 1 (very low) to 10 (very good) whenever you like. Every rating has its own timestamp. **Day** shows the intraday chart and individual ratings in the timeline. **Week** shows daily averages.
 - To log an activity, choose a type and save the form, or use a quick-log button and **Undo last log** if needed. Each save is one occurrence. Quantities are grouped by unit. Backdating and time corrections require a timestamp such as `2026-11-24T08:00:00+01:00`, including the offset for ambiguous clock times.
 - Use the timeline date to review a single day or the history filters to search a range. Edit a record in place or confirm its deletion. Day boundaries and displayed times use the HA timezone. The dashboard shows chart ranges of 7, 30 or 90 days or a custom range up to 366 days.
 - Use **Activity series** to choose a type or category and a count or a single-unit quantity. Select a Garmin comparison series to view it on the same date axis with its own scale. No matching manual logs appears as zero. Gaps in Garmin data and subjective scores remain missing.
-- **Exploratory comparisons** supports same-day evening score, next-day morning score and same-day change from morning to evening. It excludes missing pairs and keeps both dates within the chosen range. Quantity comparisons exclude days with activity in other units and no selected unit. Timestamp metrics use local minutes relative to the configurable evening anchor, so 23:55 and 00:05 remain ten minutes apart. An optional threshold shows group counts, means and their difference. Pearson correlation requires at least seven pairs with variation in both values and is flagged below 30 pairs. Logging gaps, sleep, illness and work stress can affect the result. Associations do not establish cause.
+- **Exploratory comparisons** supports same-day evening score, next-day morning score same-day change from morning to evening, and same- or next-day average mood. It excludes missing pairs and keeps both dates within the chosen range. Quantity comparisons exclude days with activity in other units and no selected unit. Timestamp metrics use local minutes relative to the configurable evening anchor, so 23:55 and 00:05 remain ten minutes apart. An optional threshold shows group counts, means and their difference. Pearson correlation requires at least seven pairs with variation in both values and is flagged below 30 pairs. Logging gaps, sleep, illness and work stress can affect the result. Associations do not establish cause.
 
 ## Garmin configuration and coverage
 
@@ -52,13 +94,13 @@ data:
   quantity: 1
 ```
 
-Use `vitality.log_checkin` with `kind: morning` and `score: 80`. Both log actions accept optional `occurred_at` and `notes`. Activity logs also accept `unit` and `duration_minutes`. `vitality.update_event`, `vitality.delete_event`, `vitality.update_checkin` and `vitality.delete_checkin` accept `id` from the record’s CSV export. For updates, send only the fields to replace.
+Use `vitality.log_checkin` with `kind: morning` and `score: 8`. Both log actions accept optional `occurred_at` and `notes`. Activity logs also accept `unit` and `duration_minutes`. `vitality.update_event`, `vitality.delete_event`, `vitality.update_checkin` and `vitality.delete_checkin` accept `id` from the record’s CSV export. For updates, send only the fields to replace.
 
-To use the built-in Home Assistant conversation agent, open `dashboard/assist-automations.yaml`. Create the two automations individually in **Settings → Automations & scenes** using **Edit in YAML** (paste one mapping at a time without its list marker), or append both entries to `automations.yaml` and reload automations. As an administrator, open Assist using a pipeline with the built-in agent and say or type **log coffee** or **log morning energy 80**. Then check the diary timeline. **Developer tools → Assist** can check sentence matching without creating logs. Use the dashboard or Actions tab if your pipeline lacks conversation triggers. For an agent that exposes argument-bearing HA scripts as tools, create and expose a script with a required text field `activity_type` and call `vitality.log_event` with `activity_type: "{{ activity_type }}"`. Configure the agent according to its tool support before relying on arbitrary activity names. The examples are checked locally; live pipeline execution must be verified after installation. [Home Assistant sentence triggers](https://www.home-assistant.io/triggers/conversation/) · [Assist developer tools](https://www.home-assistant.io/docs/tools/dev-tools/#assist-tab)
+To use the built-in Home Assistant conversation agent, open `dashboard/assist-automations.yaml`. Create the example automations individually in **Settings → Automations & scenes** using **Edit in YAML** (paste one mapping at a time without its list marker), or append the entries to `automations.yaml` and reload automations. As an administrator, open Assist using a pipeline with the built-in agent and say or type **log coffee**, **log morning energy 8**, or **log mood 6**. Then check the diary timeline. **Developer tools → Assist** can check sentence matching without creating logs. Use the dashboard or Actions tab if your pipeline lacks conversation triggers. For an agent that exposes argument-bearing HA scripts as tools, create and expose a script with a required text field `activity_type` and call `vitality.log_event` with `activity_type: "{{ activity_type }}"`. Configure the agent according to its tool support before relying on arbitrary activity names. The examples are checked locally; live pipeline execution must be verified after installation. [Home Assistant sentence triggers](https://www.home-assistant.io/triggers/conversation/) · [Assist developer tools](https://www.home-assistant.io/docs/tools/dev-tools/#assist-tab)
 
 ## Permissions, export and recovery
 
-- History, configuration, export and diary changes through the card require an HA administrator. Actions also enforce admin status on user calls. Trusted userless Home Assistant automations can log, so review who can activate your Assist pipeline or exposed scripts. Optional latest-score sensors may be readable by other HA users. You can turn them off in the integration’s **Configure** dialog.
+- History, configuration, export and diary changes through the card require an HA administrator. Actions also enforce admin status on user calls. Trusted userless Home Assistant automations can log, so review who can activate your Assist pipeline or exposed scripts. Optional latest-score and statistics sensors may be readable by other HA users. You can turn them off in the integration’s **Configure** dialog.
 - **Export selected dates** downloads CSV for events (including workouts and corrections), check-ins, daily observations or samples. The browser receives data over the existing authenticated connection. CSV is for analysis, and cells starting with spreadsheet formula characters are escaped. Store downloads privately.
 - The history, catalogue and mappings live in `/config/vitality.sqlite`, separate from Recorder. The DB is migrated transactionally when the integration starts. Removing the integration entry leaves the file for reinstall or manual recovery.
 - For a consistent standalone backup, stop HA Core using your normal HAOS management access, copy `/config/vitality.sqlite` to a private backup location, then start Core. To restore, stop Core, retain the current file as a separate backup, replace it with the saved file, and start Core. A Home Assistant backup that includes its configuration is also useful. Check that an extracted backup contains the database before depending on it. Restoring to a different HA instance may require remapping sensors because their registry IDs can differ. [Home Assistant backups](https://www.home-assistant.io/common-tasks/general/#backups)
@@ -69,7 +111,7 @@ To use the built-in Home Assistant conversation agent, open `dashboard/assist-au
 | Symptom | Check |
 | --- | --- |
 | Vitality is missing from Add integration | Check `/config/custom_components/vitality/manifest.json`, case of the directory name, and HA logs after restarting. |
-| Custom element does not exist | Check the file in `/config/www`, open `/local/vitality-card.js?v=1` as an administrator and check that it serves JavaScript. Confirm the resource uses the JavaScript module type and hard refresh. |
+| Custom element does not exist | Check the file in `/config/www`, open `/local/vitality-card.js?v=3` as an administrator and check that it serves JavaScript. Confirm the resource uses the JavaScript module type and hard refresh. |
 | Administrator required | Sign in as an HA administrator and confirm that the dashboard connection uses that account. |
 | Garmin metric is missing, deferred or stale | Check **Configure Garmin → Source and import status**, verify the value/date/observation mappings and HA entity availability, then resync. Bedtime and sleep score may arrive at different times. |
 | Database error | Check available disk space, HA configuration directory write access and HA logs. If the file came from a newer Vitality version, restore a compatible backup or use the newer version. |
@@ -85,4 +127,4 @@ npx playwright install chromium
 npm test
 ```
 
-The backend tests use synthetic Garmin fixtures, temporary SQLite databases and Home Assistant Core. The card tests use Chromium and a fixture WebSocket client at a 360 px mobile viewport. After installation, check **Today’s Garmin overview**, confirm workout units against the Garmin app, watch a fresh Body Battery change appear, and test the optional Assist examples. [Architecture decisions](ARCHITECTURE.md)
+The backend tests use synthetic Garmin fixtures, temporary SQLite databases and Home Assistant Core. The card tests use Chromium and a fixture WebSocket client at 360 px and 1280 px. After installation, open **Vitality Day**, confirm workout units against the Garmin app, watch a fresh Body Battery change appear, and test the optional Assist examples. [Architecture decisions](ARCHITECTURE.md)

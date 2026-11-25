@@ -1,6 +1,6 @@
 # Vitality architecture
 
-The target inspected read-only is Home Assistant OS with Core 2026.11.3, Python 3.14 and Europe/Zurich. Garmin Connect is loaded. Vitality is a single config entry with one database in the HA configuration directory. Actions and authenticated WebSocket commands share validation and storage. A bundled Lovelace card owns the editable diary, configuration and comparison UI. Optional score sensors expose only the latest scores and timestamps.
+The target inspected read-only is Home Assistant OS with Core 2026.11.3, Python 3.14 and Europe/Zurich. Garmin Connect is loaded. Vitality is a single config entry with one database in the HA configuration directory. Actions and authenticated WebSocket commands share validation and storage. Bundled Lovelace cards separate logging, daily and weekly review, and setup. Opt-in sensors expose latest scores and calendar summaries.
 
 ## Decisions before implementation
 

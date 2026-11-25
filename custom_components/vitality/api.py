@@ -10,7 +10,15 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from .analytics import analyze
 from .const import DOMAIN, SIGNAL
 from .garmin_data import backfill_battery, override
-from .queries import daily, export, history, import_status, range_args, samples
+from .queries import (
+    daily,
+    export,
+    history,
+    import_status,
+    mood_readings,
+    range_args,
+    samples,
+)
 from .validation import Invalid, only
 
 EVENT = {
@@ -61,8 +69,7 @@ async def mutate(hass, runtime, operation, data):
         await runtime.run(runtime.diary.delete_record, table, record_id)
     else:
         record_id = await runtime.run(runtime.diary.save_record, table, data, record_id)
-    if table == "checkins":
-        async_dispatcher_send(hass, SIGNAL)
+    async_dispatcher_send(hass, SIGNAL)
     return {"id": record_id}
 
 
@@ -118,14 +125,19 @@ async def websocket(hass, connection, msg):
             result = await runtime.run(runtime.diary.save_type, data)
         elif operation == "info":
             only(data)
-            result = {"timezone": str(runtime.zone)}
-        elif operation in ("daily", "history", "export", "samples", "analyze"):
+            result = {
+                "timezone": str(runtime.zone),
+                "checkin_scale": [1, 10],
+                "mood": True,
+            }
+        elif operation in ("daily", "history", "export", "samples", "analyze", "mood"):
             query = {
                 "daily": daily,
                 "history": history,
                 "export": export,
                 "samples": samples,
                 "analyze": analyze,
+                "mood": mood_readings,
             }[operation]
             result = await runtime.run(query, runtime.diary, runtime.zone, data)
         elif operation == "garmin":
@@ -176,4 +188,6 @@ async def websocket(hass, connection, msg):
             "Check the requested fields." if isinstance(err, vol.Invalid) else str(err),
         )
     else:
+        if operation in ("save_type", "backfill_battery", "workout_override"):
+            async_dispatcher_send(hass, SIGNAL)
         connection.send_result(msg["id"], result)

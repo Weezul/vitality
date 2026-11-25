@@ -9,9 +9,11 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STOP, EVENT_STATE_CHANGED
 from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.start import async_at_start
 
+from .const import SIGNAL
 from .garmin_data import (
     METRICS,
     WORKOUT_DEFAULTS,
@@ -260,6 +262,7 @@ class Garmin:
                             errors += 1
             if backfill:
                 await self.runtime.run(ingest, self.runtime.diary, [], [], workouts)
+                async_dispatcher_send(self.hass, SIGNAL)
                 return {
                     "records_seen": len({row[0] for row in workouts}),
                     "skipped": errors,
@@ -298,6 +301,7 @@ class Garmin:
                 else None,
             }
             self.status = status
+            async_dispatcher_send(self.hass, SIGNAL)
             return {
                 "records_seen": len({row[0] for row in workouts}),
                 "skipped": errors,

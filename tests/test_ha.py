@@ -13,11 +13,12 @@ import yaml
 from hassil import Intents, recognize
 from homeassistant import loader
 from homeassistant.bootstrap import async_load_base_functionality
-from homeassistant.config_entries import ConfigEntries
+from homeassistant.config_entries import ConfigEntries, ConfigEntryState
 from homeassistant.const import EVENT_HOMEASSISTANT_START
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, Unauthorized
 from homeassistant.helpers import entity_registry
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.template import Template
 
 from custom_components.vitality import (
@@ -25,7 +26,73 @@ from custom_components.vitality import (
     async_setup_entry,
     async_unload_entry,
 )
+from custom_components.vitality.const import SIGNAL
+from custom_components.vitality.sensor import async_setup_entry as setup_sensors
+from custom_components.vitality.sensor import summary
 from custom_components.vitality.validation import iso
+
+
+def test_summary_uses_local_days_and_latest_scores(diary, zone):
+    diary.save_type({"id": "coffee", "name": "Coffee"})
+    for stamp in (
+        "2026-11-18T07:00:00Z",
+        "2026-11-23T23:05:00Z",
+        "2026-11-17T07:00:00Z",
+    ):
+        diary.save_record("events", {"activity_type": "coffee", "occurred_at": stamp})
+    for stamp, score in (("18T07:00:00Z", 4), ("24T06:00:00Z", 6), ("24T07:00:00Z", 8)):
+        diary.save_record(
+            "checkins",
+            {"kind": "morning", "score": score, "occurred_at": "2026-11-" + stamp},
+        )
+    stats = summary(diary, zone, datetime.fromisoformat("2026-11-24T09:00:00Z"))
+    assert stats["activities_today"][1] == stats["activity_coffee_today"][1] == 1
+    assert stats["activities_7_days"][1] == stats["activity_coffee_7_days"][1] == 2
+    assert stats["morning_today"][1] == 8
+    assert stats["morning_7_days"][1] == 6
+    assert stats["morning_7_days"][2]["days_with_scores"] == 2
+    assert stats["evening_today"][1] is None
+
+
+def test_stats_entities_pick_up_new_activity_types(diary, zone, tmp_path):
+    async def exercise():
+        hass = HomeAssistant(str(tmp_path))
+        cleanup = []
+        runtime = SimpleNamespace(
+            diary=diary, zone=zone, run=hass.async_add_executor_job
+        )
+        entry = SimpleNamespace(
+            options={"expose_stats": True},
+            data={},
+            entry_id="fixture",
+            state=ConfigEntryState.SETUP_IN_PROGRESS,
+            runtime_data=runtime,
+            async_on_unload=cleanup.append,
+        )
+        entities = []
+        await setup_sensors(hass, entry, entities.extend)
+        assert (
+            next(
+                entity for entity in entities if entity.key == "activities_today"
+            ).native_value
+            == 0
+        )
+
+        await runtime.run(diary.save_type, {"id": "coffee", "name": "Coffee"})
+        await runtime.run(diary.save_record, "events", {"activity_type": "coffee"})
+        async_dispatcher_send(hass, SIGNAL)
+        await hass.async_block_till_done()
+        coffee = next(
+            entity for entity in entities if entity.key == "activity_coffee_today"
+        )
+        assert coffee.unique_id == "fixture_stats_activity_coffee_today"
+        assert coffee.native_value == 1
+
+        for remove in reversed(cleanup[1:]):
+            remove()
+        await cleanup[0]()
+
+    asyncio.run(exercise())
 
 
 def test_registry_state_events_services_and_websocket_reload(tmp_path):
@@ -138,7 +205,7 @@ def test_registry_state_events_services_and_websocket_reload(tmp_path):
             await hass.services.async_call(
                 "vitality",
                 "log_checkin",
-                {"kind": "morning", "score": 20},
+                {"kind": "morning", "score": 2},
                 blocking=True,
                 context=Context(user_id="non_admin"),
             )
@@ -149,7 +216,7 @@ def test_registry_state_events_services_and_websocket_reload(tmp_path):
             ).read_text()
         )
         for automation, utterance in zip(
-            examples, ("log coffee", "log morning energy 80"), strict=True
+            examples, ("log coffee", "log mood 6", "log morning energy 8"), strict=True
         ):
             command = automation["triggers"][0]["command"]
             intents = Intents.from_dict(
@@ -178,6 +245,11 @@ def test_registry_state_events_services_and_websocket_reload(tmp_path):
                 context=Context(user_id="admin"),
             )
         assert (await ws("daily", dates)).send_result.call_args.args[1][0]["count"] == 1
+        assert (await ws("info", {})).send_result.call_args.args[1][
+            "checkin_scale"
+        ] == [1, 10]
+        mood = (await ws("mood", dates)).send_result.call_args.args[1]
+        assert [row["score"] for row in mood["readings"]] == [6]
         old = entry.runtime_data
         await old.garmin.save_metric(
             {"key": "body_battery", "entity": battery.entity_id}
@@ -208,7 +280,7 @@ def test_registry_state_events_services_and_websocket_reload(tmp_path):
         assert len(chart["samples"]) == 2
         assert (await ws("daily", dates)).send_result.call_args.args[1][0][
             "morning"
-        ] == 80
+        ] == 8
         workout_date = workout_at.astimezone(entry.runtime_data.zone).date().isoformat()
         workout_dates = {"start": workout_date, "end": workout_date}
         assert (await ws("daily", workout_dates)).send_result.call_args.args[1][0][

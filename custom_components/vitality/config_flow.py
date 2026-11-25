@@ -17,7 +17,10 @@ class VitalityConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema(
-                {vol.Optional("expose_scores", default=False): bool}
+                {
+                    vol.Optional("expose_scores", default=False): bool,
+                    vol.Optional("expose_stats", default=False): bool,
+                }
             ),
         )
 
@@ -30,12 +33,17 @@ class VitalityOptions(config_entries.OptionsFlowWithReload):
     async def async_step_init(self, user_input=None):
         if user_input is not None:
             return self.async_create_entry(data=user_input)
-        default = self.config_entry.options.get(
-            "expose_scores", self.config_entry.data.get("expose_scores", False)
-        )
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
-                {vol.Optional("expose_scores", default=default): bool}
+                {
+                    vol.Optional(
+                        key,
+                        default=self.config_entry.options.get(
+                            key, self.config_entry.data.get(key, False)
+                        ),
+                    ): bool
+                    for key in ("expose_scores", "expose_stats")
+                }
             ),
         )

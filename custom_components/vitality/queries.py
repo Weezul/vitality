@@ -57,6 +57,9 @@ def daily(diary, zone, data):
             "morning": None,
             "evening": None,
             "other": None,
+            "mood": None,
+            "mood_average": None,
+            "mood_count": 0,
             "count": 0,
             "quantities": {},
             "metrics": {},
@@ -70,14 +73,21 @@ def daily(diary, zone, data):
             "diary_date", 1, lambda value: local(value, zone).date().isoformat()
         )
         for row in db.execute(
-            """SELECT local_day, kind, score FROM (
-              SELECT diary_date(occurred_at) AS local_day, kind, score, row_number() OVER (
+            """SELECT local_day, kind, score, average, observations FROM (
+              SELECT diary_date(occurred_at) AS local_day, kind, score,
+                avg(score) OVER by_kind AS average, count(*) OVER by_kind AS observations,
+                row_number() OVER (
                 PARTITION BY diary_date(occurred_at), kind ORDER BY occurred_at DESC, created_at DESC, id DESC
               ) AS rank FROM checkins WHERE occurred_at>=? AND occurred_at<?
+                WINDOW by_kind AS (PARTITION BY diary_date(occurred_at), kind)
             ) WHERE rank=1""",
             (lower, upper),
         ):
-            result[row["local_day"]][row["kind"]] = row["score"]
+            item = result[row["local_day"]]
+            item[row["kind"]] = row["score"]
+            if row["kind"] == "mood":
+                item["mood_average"] = row["average"]
+                item["mood_count"] = row["observations"]
         for row in db.execute(
             f"""SELECT diary_date(e.occurred_at) AS local_day, e.unit, count(*) AS count, sum(e.quantity) AS total
             FROM events e JOIN activity_types t ON e.activity_type_id=t.id
@@ -277,6 +287,26 @@ def samples(diary, zone, data):
         )
     return {
         "samples": rows[:1500],
+        "truncated": len(rows) > 1500,
+        "bounds": [lower, upper],
+    }
+
+
+def mood_readings(diary, zone, data):
+    lower, upper = range_args(zone, data)
+    if data["start"] != data["end"]:
+        raise Invalid("Choose one local date for mood readings.")
+    with diary.session() as db:
+        rows = records(
+            db.execute(
+                """SELECT score, occurred_at FROM checkins
+               WHERE kind='mood' AND occurred_at>=? AND occurred_at<?
+               ORDER BY occurred_at, created_at, id LIMIT 1501""",
+                (lower, upper),
+            )
+        )
+    return {
+        "readings": rows[:1500],
         "truncated": len(rows) > 1500,
         "bounds": [lower, upper],
     }

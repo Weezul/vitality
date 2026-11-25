@@ -43,7 +43,10 @@ async def setup_entry(hass, entry):
     except HomeAssistantError as err:
         raise ConfigEntryError(str(err)) from err
     entry.runtime_data = runtime
-    if entry.options.get("expose_scores", entry.data.get("expose_scores", False)):
+    if any(
+        entry.options.get(key, entry.data.get(key, False))
+        for key in ("expose_scores", "expose_stats")
+    ):
         runtime.platforms = [Platform.SENSOR]
         await hass.config_entries.async_forward_entry_setups(entry, runtime.platforms)
     hass.data[DOMAIN] = runtime

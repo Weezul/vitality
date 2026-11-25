@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 
 const module = await readFile(new URL("../../dashboard/vitality-card.js", import.meta.url), "utf8");
 
-async function mount(page) {
+async function mount(page, type = "vitality-card", config = {}) {
   await page.route("https://vitality.test/**", async (route) => {
     if (route.request().url().endsWith(".js")) {
       await route.fulfill({ contentType: "text/javascript", body: module });
@@ -12,8 +12,8 @@ async function mount(page) {
     }
   });
   await page.goto("https://vitality.test/");
-  await page.evaluate(async () => {
-    await customElements.whenDefined("vitality-card");
+  await page.evaluate(async ({ type, config }) => {
+    await customElements.whenDefined(type);
     const { calendarDay, shiftDay } = await import("/card.js");
     const today = calendarDay("Europe/Zurich");
     const types = [{ id: "coffee", name: "Coffee", category: "Caffeine", aliases: [], archived: false, unit: "cup" }];
@@ -25,12 +25,12 @@ async function mount(page) {
     let records = [
       { id: "workout_1", source: "garmin", name: "Local workout", original_name: "Fixture run",
         original_type: "running", occurred_at: time, duration_minutes: 37, late: true, distance_m: 5000 },
-      { id: "checkin_1", source: "checkin", kind: "morning", score: 80, occurred_at: time,
+      { id: "checkin_1", source: "checkin", kind: "morning", score: 8, occurred_at: time,
         notes: "<img src=x onerror='window.injected=true'>" },
     ];
     window.calls = [];
-    const card = document.createElement("vitality-card");
-    card.setConfig({});
+    const card = document.createElement(type);
+    card.setConfig(config);
     card.hass = {
       async callApi(method, path) {
         window.calls.push([method, path]);
@@ -38,7 +38,8 @@ async function mount(page) {
       },
       async callWS({ operation, data }) {
         window.calls.push([operation, data]);
-        if (operation === "info") return { timezone: "Europe/Zurich" };
+        if (operation === "info") return { timezone: "Europe/Zurich",
+          ...(config.fixtureLegacy ? {} : { checkin_scale: [1, 10], mood: true }) };
         if (operation === "types") return types;
         if (operation === "garmin") return {
           workflows: {}, workouts: { late_types: [], type_map: {}, sleep_anchor: "18:00" },
@@ -47,14 +48,16 @@ async function mount(page) {
         };
         if (operation === "samples") return { samples: [{ value: 70, value_type: "numeric", unit: "%", observed_at: time }],
           bounds: [today + "T00:00:00Z", shiftDay(today, 1) + "T00:00:00Z"], truncated: false };
+        if (operation === "mood") return { readings: [{ score: 5, occurred_at: time }, { score: 9, occurred_at: today + "T18:00:00Z" }],
+          bounds: [today + "T00:00:00Z", shiftDay(today, 1) + "T00:00:00Z"], truncated: false };
         if (operation === "daily") {
           const results = [];
           for (let day = data.start; day <= data.end; day = shiftDay(day, 1)) {
             const current = day === today;
             results.push({ date: day, morning: current ? records.find((r) => r.kind === "morning")?.score : null,
-              evening: current ? 45 : null, count: current ? records.filter((r) => r.source === "manual").length : 0,
+              evening: current ? 5 : null, count: current ? records.filter((r) => r.source === "manual").length : 0,
               quantities: {}, workout_count: current ? 1 : null, late_workouts: current ? 1 : null,
-              metrics: current ? metrics : {} });
+              mood_average: current ? 7 : null, metrics: current ? metrics : {} });
           }
           return results;
         }
@@ -65,6 +68,7 @@ async function mount(page) {
           return { id: "manual_1" };
         }
         if (operation === "delete_event") records = records.filter((row) => row.id !== data.id);
+        if (operation === "log_checkin") return { id: "new_checkin" };
         if (operation === "update_checkin") records = records.map((row) => row.id === data.id ? { ...row, ...data } : row);
         if (operation === "save_type") { types.push(data); return data.id; }
         if (operation === "analyze") return { start: data.start, end: data.end, outcome: "Evening score on day D",
@@ -75,10 +79,76 @@ async function mount(page) {
       },
     };
     document.body.append(card);
-  });
-  await expect(page.getByRole("heading", { name: "Vitality diary" })).toBeVisible();
-  await expect(page.getByText("Morning 80 / 100 · Evening 45 / 100")).toBeVisible();
+  }, { type, config });
+  if (type === "vitality-card") {
+    await expect(page.getByRole("heading", { name: "Vitality diary" })).toBeVisible();
+    await expect(page.getByText("Morning 8 / 10 · Evening 5 / 10")).toBeVisible();
+  }
 }
+
+for (const width of [360, 1280]) {
+  test(`logging, daily review, weekly review and settings at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 });
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    const fits = async () => expect(await page.evaluate(() =>
+      document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+
+    await mount(page, "vitality-log-card");
+    await expect(page.getByRole("button", { name: "Save check-in" })).toBeVisible();
+    await expect(page.getByLabel("Score (1–10)")).toHaveAttribute("min", "1");
+    await expect(page.getByLabel("Score (1–10)")).toHaveAttribute("max", "10");
+    await expect(page.getByText("Manage activity types")).toHaveCount(0);
+    const columns = await page.locator(".columns").evaluate((node) =>
+      getComputedStyle(node).gridTemplateColumns.split(" ").length);
+    expect(columns).toBe(width === 360 ? 1 : 3);
+    await page.getByLabel("Score (1–10)").fill("10");
+    await page.getByRole("button", { name: "Save check-in" }).click();
+    await expect(page.getByRole("status")).toHaveText("Saved.");
+    expect(await page.evaluate(() => window.calls.find(([name]) => name === "log_checkin")[1].score)).toBe(10);
+    await page.getByLabel("Mood (1–10)").fill("7");
+    await page.getByRole("button", { name: "Save mood" }).click();
+    await expect.poll(() => page.evaluate(() => window.calls.filter(([name]) =>
+      name === "log_checkin").at(-1)?.[1])).toMatchObject({ kind: "mood", score: 7 });
+    await page.getByRole("button", { name: "+ Coffee" }).click();
+    await expect(page.getByRole("status")).toHaveText("Logged Coffee.");
+    await fits();
+
+    await mount(page, "vitality-stats-card", { period: "day" });
+    await expect(page.getByRole("heading", { name: "Daily timeline" })).toBeVisible();
+    await expect(page.getByText("morning · 8/10")).toBeVisible();
+    await expect(page.getByRole("img", { name: "Body Battery (%) · intraday" })).toBeVisible();
+    await expect(page.getByRole("img", { name: "Mood throughout the day (1–10)" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Save check-in" })).toHaveCount(0);
+    await fits();
+
+    await mount(page, "vitality-stats-card", { period: "week" });
+    await expect(page.getByRole("button", { name: "7 days" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("img", { name: "Subjective scores (1–10)" })).toBeVisible();
+    await expect(page.getByRole("img", { name: "Daily average mood (1–10)" })).toBeVisible();
+    await page.getByText("Exploratory comparisons").click();
+    await page.getByLabel("Outcome").selectOption("next_mood");
+    await page.getByRole("button", { name: "Compare", exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.calls.find(([name]) =>
+      name === "analyze")?.[1].outcome)).toBe("next_mood");
+    await expect(page.getByRole("heading", { name: "Daily timeline" })).toHaveCount(0);
+    await fits();
+
+    await mount(page, "vitality-config-card");
+    await page.getByText("Manage activity types").click();
+    await expect(page.getByLabel("Stable ID")).toBeVisible();
+    await expect(page.getByText("Configure Garmin")).toBeVisible();
+    await expect(page.getByRole("button", { name: "+ Coffee" })).toHaveCount(0);
+    await fits();
+    expect(errors).toEqual([]);
+  });
+}
+
+test("new logging card identifies an outdated Home Assistant installation", async ({ page }) => {
+  await mount(page, "vitality-log-card", { fixtureLegacy: true });
+  await expect(page.getByRole("status")).toContainText("Update the Vitality integration files");
+  await expect(page.getByRole("button", { name: "Save check-in" })).toHaveCount(0);
+});
 
 test("mobile charts, date presets, Garmin detail and text escaping", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 800 });
@@ -114,10 +184,10 @@ test("catalogue, quick log undo, persisted edit, analysis and CSV", async ({ pag
   await page.getByRole("button", { name: "Undo last log" }).click();
   await expect(page.getByRole("status")).toHaveText("Log undone.");
   await page.getByRole("button", { name: "Edit", exact: true }).first().click();
-  const editor = page.getByRole("article").filter({ hasText: "morning · 80/100" }).first();
-  await editor.getByLabel("Score (0–100)").fill("82");
+  const editor = page.getByRole("article").filter({ hasText: "morning · 8/10" }).first();
+  await editor.getByLabel("Score (1–10)").fill("9");
   await editor.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByText("Morning 82 / 100 · Evening 45 / 100")).toBeVisible();
+  await expect(page.getByText("Morning 9 / 10 · Evening 5 / 10")).toBeVisible();
   await page.getByText("Exploratory comparisons", { exact: true }).click();
   await page.getByRole("button", { name: "Compare", exact: true }).click();
   await expect(page.getByText(/Exploratory Pearson r = 0.45/)).toBeVisible();

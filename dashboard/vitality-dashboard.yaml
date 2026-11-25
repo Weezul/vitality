@@ -1,9 +1,28 @@
 title: Vitality
 views:
-  - title: Diary
-    path: diary
+  - title: Log
+    path: log
+    icon: mdi:plus-circle-outline
+    type: panel
+    cards:
+      - type: custom:vitality-log-card
+  - title: Day
+    path: day
+    icon: mdi:calendar-today
+    type: panel
+    cards:
+      - type: custom:vitality-stats-card
+        period: day
+  - title: Week
+    path: week
     icon: mdi:heart-pulse
     type: panel
     cards:
-      - type: custom:vitality-card
-        title: Vitality diary
+      - type: custom:vitality-stats-card
+        period: week
+  - title: Settings
+    path: settings
+    icon: mdi:cog-outline
+    type: panel
+    cards:
+      - type: custom:vitality-config-card

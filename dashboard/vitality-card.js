@@ -1,5 +1,5 @@
 const tag = "vitality-card";
-const kinds = ["morning", "evening", "other"];
+const kinds = ["morning", "evening", "other", "mood"];
 
 function element(name, text, attrs = {}) {
   const node = document.createElement(name);
@@ -132,20 +132,35 @@ function chart(title, labels, series, { min = 0, max, bars = false, timestamps, 
 
 const css = `
   :host { display:block; color:var(--primary-text-color); }
-  ha-card { padding: clamp(12px, 3vw, 22px); }
+  ha-card { display:block; padding: clamp(16px, 3vw, 28px); container-type:inline-size; }
+  .header { display:flex; align-items:center; flex-wrap:wrap; justify-content:space-between; gap:8px; margin-bottom:12px; }
+  .header h2 { margin:0; font-size:clamp(1.3rem, 4cqw, 1.8rem); letter-spacing:-.025em; }
+  .scoreboard,.columns { display:grid; gap:12px; }
+  .scoreboard { grid-template-columns:repeat(2,minmax(0,1fr)); margin:12px 0; }
+  .scoreboard > div { padding:12px; border-radius:12px; background:var(--secondary-background-color,#f4f6f8); }
+  .scoreboard strong { display:block; font-size:1.45rem; line-height:1.4; font-variant-numeric:tabular-nums; }
+  .columns > * { min-width:0; }
+  @container (min-width: 650px) { .columns { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  @container (min-width: 900px) { .columns { grid-template-columns:repeat(3,minmax(0,1fr)); } }
   h2,h3,h4,p { margin:0 0 10px; }
   section, details { border-top:1px solid var(--divider-color,#bbb); padding:14px 0; }
   summary { cursor:pointer; font-weight:600; }
   details > div { margin-top:12px; }
-  form,.row { display:flex; flex-wrap:wrap; align-items:end; gap:8px; margin:8px 0; }
+  form,.row { display:flex; flex-wrap:wrap; align-items:end; gap:10px; margin:8px 0; }
+  .record-form label { flex:1 1 140px; }
+  .record-form input,.record-form select { width:100%; }
+  .record-form button[type=submit] { align-self:end; }
+  .record-form details { flex-basis:100%; padding:6px 0; border:0; }
+  @container (max-width: 360px) { .record-form button[type=submit] { width:100%; } }
   label { display:grid; gap:4px; min-width:0; max-width:100%; }
   input,select,button { font:inherit; color:inherit; background:var(--card-background-color,#fff);
-    border:1px solid var(--divider-color,#777); border-radius:6px; min-height:42px; padding:4px 8px;
+    border:1px solid var(--divider-color,#777); border-radius:9px; min-height:44px; padding:6px 10px;
     box-sizing:border-box; max-width:100%; }
   input,select { width:min(100%, 230px); }
   input[type=checkbox] { width:24px; }
   input[type=number] { width:105px; }
   button { cursor:pointer; }
+  button[aria-pressed=true] { border-color:var(--primary-color,#146594); color:var(--primary-color,#146594); font-weight:600; }
   button[type=submit] { background:var(--primary-color,#146594); color:var(--text-primary-color,#fff); }
   button:disabled { opacity:.55; cursor:default; }
   :focus-visible { outline:2px solid var(--primary-color,#146594); outline-offset:1px; }
@@ -161,10 +176,12 @@ const css = `
   .trace { fill:none; stroke:currentColor; stroke-width:2; }
   .trace.second { stroke-dasharray:6 4; }
   .legend { display:flex; flex-wrap:wrap; gap:12px; list-style:none; padding:0; margin:0; }
-  .status { min-height:20px; }
+  .status:empty { margin:0; }
 `;
 
 class VitalityCard extends HTMLElement {
+  mode = "legacy";
+
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
@@ -178,7 +195,13 @@ class VitalityCard extends HTMLElement {
   }
 
   setConfig(config) {
-    this.title = config.title || "Vitality diary";
+    this.period = config.period ?? "week";
+    if (this.mode === "stats" && !["day", "week"].includes(this.period)) {
+      throw new Error("Choose day or week for period.");
+    }
+    const titles = { legacy: "Vitality diary", log: "Log Vitality", stats: "Vitality " + this.period, config: "Vitality settings" };
+    this.title = config.title || titles[this.mode];
+    if (!this.booted) this.preset = this.mode === "stats" ? 7 : 30;
   }
 
   set hass(hass) {
@@ -207,7 +230,7 @@ class VitalityCard extends HTMLElement {
     if (this.preset) this.range = { start: shiftDay(now, 1 - this.preset), end: now };
   }
 
-  getCardSize() { return 12; }
+  getCardSize() { return this.mode === "log" ? 6 : 12; }
 
   call(operation, data = {}) {
     return this.client.callWS({ type: "vitality/diary", operation, data });
@@ -216,10 +239,14 @@ class VitalityCard extends HTMLElement {
   async boot() {
     this.booted = true;
     try {
-      ({ timezone: this.zone } = await this.call("info"));
+      const info = await this.call("info");
+      if (info.checkin_scale?.join(",") !== "1,10" || !info.mood) {
+        throw new Error("Update the Vitality integration files on Home Assistant and restart to use 1–10 energy and mood.");
+      }
+      this.zone = info.timezone;
       this.today = calendarDay(this.zone);
       this.detail = this.today;
-      this.range = { start: shiftDay(this.today, -29), end: this.today };
+      this.range = { start: shiftDay(this.today, 1 - this.preset), end: this.today };
       this.message = "";
       this.error = false;
       await this.refresh();
@@ -232,23 +259,50 @@ class VitalityCard extends HTMLElement {
 
   async refresh() {
     const token = ++this.queryVersion;
+    if (this.mode === "log" || this.mode === "config") {
+      const [types, garmin] = await Promise.all([
+        this.call("types"),
+        this.mode === "config" ? this.call("garmin") : null,
+      ]);
+      if (token !== this.queryVersion) return;
+      Object.assign(this, { types, garmin, ready: true });
+      this.render();
+      return;
+    }
     const selected = this.seriesType ? { activity_type: this.seriesType } : (
       this.seriesCategory ? { category: this.seriesCategory } : {}
     );
     const detailRange = { start: this.detail, end: this.detail };
-    const [types, days, history, todayRows, timeline, garmin, dayRows, battery, analysis] = await Promise.all([
+    if (this.mode === "stats" && this.period === "day") {
+      const [types, timeline, garmin, rows, battery, mood] = await Promise.all([
+        this.call("types"),
+        this.call("history", { ...detailRange, limit: 100, offset: this.timelineOffset || 0 }),
+        this.call("garmin"),
+        this.call("daily", detailRange),
+        this.call("samples", { ...detailRange, metric: this.sampleKey || "body_battery" }),
+        this.call("mood", detailRange),
+      ]);
+      if (token !== this.queryVersion) return;
+      Object.assign(this, { types, timeline, garmin, dayRow: rows[0], battery, mood, ready: true });
+      this.render();
+      return;
+    }
+    const legacy = this.mode === "legacy";
+    const [types, days, history, todayRows, timeline, garmin, dayRows, battery, analysis, mood] = await Promise.all([
       this.call("types"),
       this.call("daily", { ...this.range, ...selected }),
       this.call("history", { ...this.range, ...this.filters, offset: this.offset || 0 }),
-      this.call("daily", { start: this.today, end: this.today }),
-      this.call("history", { ...detailRange, limit: 100, offset: this.timelineOffset || 0 }),
+      legacy ? this.call("daily", { start: this.today, end: this.today }) : [],
+      legacy ? this.call("history", { ...detailRange, limit: 100, offset: this.timelineOffset || 0 }) : null,
       this.call("garmin"),
-      this.call("daily", detailRange),
-      this.call("samples", { ...detailRange, metric: this.sampleKey || "body_battery" }),
+      legacy ? this.call("daily", detailRange) : [],
+      legacy ? this.call("samples", { ...detailRange, metric: this.sampleKey || "body_battery" }) : null,
       this.analysisSettings ? this.call("analyze", { ...this.range, ...selected, ...this.analysisSettings }) : null,
+      legacy ? this.call("mood", detailRange) : null,
     ]);
     if (token !== this.queryVersion) return;
-    Object.assign(this, { types, days, history, todayRow: todayRows[0], timeline, garmin, dayRow: dayRows[0], battery, analysis });
+    Object.assign(this, { types, days, history, todayRow: todayRows[0], timeline, garmin, dayRow: dayRows[0], battery, analysis, mood });
+    this.ready = true;
     this.render();
   }
 
@@ -304,10 +358,13 @@ class VitalityCard extends HTMLElement {
   }
 
   recordForm(source, record) {
-    const checkin = source === "checkin";
+    const mood = source === "mood";
+    const checkin = mood || source === "checkin";
     const fields = checkin ? [
-      field("Check-in", select("kind", kinds.map((k) => [k, k]), record?.kind)),
-      field("Score (0–100)", input("score", record?.score, "number", { min: 0, max: 100, step: 1, required: "" })),
+      ...(!mood ? [field("Check-in", select("kind", kinds
+        .filter((kind) => kind !== "mood" || record || this.mode === "legacy")
+        .map((kind) => [kind, kind]), record?.kind))] : []),
+      field(mood ? "Mood (1–10)" : "Score (1–10)", input("score", record?.score, "number", { min: 1, max: 10, step: 1, required: "" })),
     ] : [
       field("Activity", select("activity_type", this.typesOptions(Boolean(record)), record?.activity_type_id)),
       field("Quantity", input("quantity", record?.quantity ?? 1, "number", { min: 0, step: "any", required: "" })),
@@ -317,9 +374,15 @@ class VitalityCard extends HTMLElement {
     fields.push(field(record ? "Timestamp (ISO with offset)" : "Backdate (ISO with offset, optional)",
       input("occurred_at", record?.occurred_at, "text", { placeholder: "2026-11-24T08:00:00+01:00" })));
     fields.push(field("Notes", input("notes", record?.notes, "text", { maxlength: 2000 })));
-    return this.form(fields, (data) => this.action(async () => {
+    if (this.mode === "log" && !record) {
+      const optional = fields.splice(mood ? 1 : 2);
+      fields.push(add(element("details"), element("summary", "Optional details"),
+        add(element("div", null, { class: "row" }), ...optional)));
+    }
+    const form = this.form(fields, (data) => this.action(async () => {
       if (checkin) data.score = Number(data.score);
-      else {
+      if (mood) data.kind = "mood";
+      if (!checkin) {
         data.quantity = Number(data.quantity);
         data.duration_minutes = data.duration_minutes ? Number(data.duration_minutes) : null;
         if (!record && !data.unit) delete data.unit;
@@ -329,7 +392,10 @@ class VitalityCard extends HTMLElement {
       const result = await this.call(`${record ? "update" : "log"}_${table}`, record ? { ...data, id: record.id } : data);
       this.editing = null;
       if (!record) this.undo = { table, id: result.id };
-    }, record ? "Changes saved." : "Saved."));
+    }, record ? "Changes saved." : "Saved."), record || this.mode === "legacy"
+      ? "Save" : mood ? "Save mood" : checkin ? "Save check-in" : "Log activity");
+    form.classList.add("record-form");
+    return form;
   }
 
   typeEditor() {
@@ -365,12 +431,16 @@ class VitalityCard extends HTMLElement {
   logControls() {
     const row = this.todayRow;
     const panel = add(element("section"), element("h3", "Today"),
-      element("p", `Morning ${row?.morning ?? "—"} / 100 · Evening ${row?.evening ?? "—"} / 100`),
+      element("p", `Morning ${row?.morning ?? "—"} / 10 · Evening ${row?.evening ?? "—"} / 10`),
       element("h4", "Check in"), this.recordForm("checkin"));
     const options = this.typesOptions();
     panel.append(element("h4", "Log an activity"));
     if (!options.length) return add(panel, element("p", "Add an activity type below to start logging."));
     panel.append(this.recordForm("manual"));
+    return add(panel, this.quickLog());
+  }
+
+  quickLog() {
     const quick = element("div", null, { class: "row", role: "group", "aria-label": "Quick log" });
     const recent = this.types.filter((type) => !type.archived)
       .sort((a, b) => (b.recent_at || "").localeCompare(a.recent_at || ""));
@@ -378,7 +448,24 @@ class VitalityCard extends HTMLElement {
       const result = await this.call("log_event", { activity_type: id });
       this.undo = { table: "event", id: result.id };
     }, `Logged ${name}.`)));
-    return add(panel, quick);
+    return quick;
+  }
+
+  scoreBoard(row) {
+    return add(element("div", null, { class: "scoreboard" }),
+      ...["Morning", "Evening"].map((label) => add(element("div"),
+        element("span", label), element("strong", row?.[label.toLowerCase()] ?? "—"))));
+  }
+
+  loggingPanel() {
+    const options = this.typesOptions();
+    return add(element("div"),
+      ...(options.length ? [add(element("section"), element("h3", "Quick log"), this.quickLog())] : []),
+      add(element("div", null, { class: "columns" }),
+        add(element("section"), element("h3", "Energy check-in"), this.recordForm("checkin")),
+        add(element("section"), element("h3", "Rate mood"), this.recordForm("mood")),
+        add(element("section"), element("h3", "Log an activity"), options.length
+          ? this.recordForm("manual") : element("p", "Create an activity type in Vitality settings to start logging."))));
   }
 
   records(rows, context) {
@@ -386,7 +473,7 @@ class VitalityCard extends HTMLElement {
     for (const item of rows) {
       const checkin = item.source === "checkin";
       const panel = add(element("article", null, { class: "record" }),
-        element("strong", checkin ? `${item.kind} · ${item.score}/100` : item.name || "Workout"),
+        element("strong", checkin ? `${item.kind} · ${item.score}/10` : item.name || "Workout"),
         element("p", `${this.labelTime(item.occurred_at)} · ${item.source}${item.quantity == null ? "" : ` · ${item.quantity} ${item.unit}`}${item.duration_minutes == null ? "" : ` · ${Math.round(item.duration_minutes)} min`}`));
       if (item.notes) panel.append(element("p", item.notes));
       if (item.prior_battery) panel.append(element("p",
@@ -476,10 +563,14 @@ class VitalityCard extends HTMLElement {
   charts() {
     const panel = add(element("div"), this.dateControls());
     const labels = this.days.map(({ date }) => date.slice(5));
-    panel.append(chart("Subjective scores (0–100)", labels, [
+    panel.append(chart("Subjective scores (1–10)", labels, [
       { name: "Morning", values: this.days.map(({ morning }) => morning) },
       { name: "Evening", values: this.days.map(({ evening }) => evening) },
-    ], { max: 100 }));
+    ], { min: 1, max: 10 }));
+    panel.append(chart("Daily average mood (1–10)", labels, [
+      { name: "Average mood", values: this.days.map(({ mood_average }) =>
+        mood_average == null ? null : Number(mood_average.toFixed(1))) },
+    ], { min: 1, max: 10 }));
     const units = [...new Set(this.days.flatMap(({ quantities }) => Object.keys(quantities)))].sort();
     const quantity = this.quantityMode && units.includes(this.quantityUnit);
     panel.append(this.form([
@@ -557,7 +648,8 @@ class VitalityCard extends HTMLElement {
           ["workout_count", "Imported workouts"], ["late_workouts", "Late workouts"],
           ...[...metrics].map(([key, value]) => [`metric:${key}`, this.metricLabel(key, value)])], this.analysisChoice || "count")),
         field("Outcome", select("outcome", [["evening", "Same-day evening score"],
-          ["next_morning", "Next-day morning score"], ["change", "Same-day evening minus morning"]],
+          ["next_morning", "Next-day morning score"], ["change", "Same-day evening minus morning"],
+          ["mood", "Same-day average mood"], ["next_mood", "Next-day average mood"]],
         this.analysisSettings?.outcome)),
         field("Optional group threshold", input("threshold", this.analysisSettings?.threshold, "number", { step: "any" })),
       ], (data) => this.action(() => {
@@ -656,8 +748,10 @@ class VitalityCard extends HTMLElement {
     return nav;
   }
 
-  historyPanel() {
-    const panel = add(element("section"), element("h3", "History"), this.form([
+  historyPanel(showHeading = true) {
+    const panel = element(showHeading ? "section" : "div");
+    if (showHeading) panel.append(element("h3", "History"));
+    panel.append(this.form([
       field("Name contains", input("name", this.filters.name, "text", { maxlength: 120 })),
       field("Category", select("category", [["", "All categories"], ...this.categories.map((c) => [c, c])], this.filters.category)),
       field("Source", select("source", [["all", "All"], ["manual", "Manual activities"], ["checkin", "Check-ins"], ["garmin", "Garmin"]], this.filters.source)),
@@ -670,11 +764,25 @@ class VitalityCard extends HTMLElement {
     const panel = add(element("section"), element("h3", "Daily timeline"), this.form([
       field("Detail date", input("date", this.detail, "date", { required: "" })),
     ], ({ date }) => this.action(() => { this.detail = date; this.timelineOffset = 0; }), "Show day"),
-    ...(this.detail === this.today ? [] : [this.overview(this.dayRow, "Garmin overview for this day")]),
+    ...(this.mode === "stats" ? [this.scoreBoard(this.dayRow)] : []),
+    ...(this.mode === "stats" || this.detail !== this.today ? [this.overview(this.dayRow, "Garmin overview for this day")] : []),
+    this.moodChart(),
     this.batteryChart(),
     this.records(this.timeline.records, "timeline"), this.pager(this.timelineOffset, this.timeline.next,
       (offset) => this.action(() => { this.timelineOffset = offset; }), 100));
     return panel;
+  }
+
+  moodChart() {
+    const { readings, bounds, truncated } = this.mood;
+    const view = chart("Mood throughout the day (1–10)",
+      readings.map(({ occurred_at }) => this.clockTime(occurred_at)),
+      [{ name: "Mood", values: readings.map(({ score }) => score) }], {
+        min: 1, max: 10, timestamps: readings.map(({ occurred_at }) => Date.parse(occurred_at)),
+        extent: bounds.map(Date.parse),
+      });
+    if (truncated) view.append(element("p", "Chart shows the first 1,500 ratings. Use CSV for the full day."));
+    return view;
   }
 
   exportPanel() {
@@ -764,6 +872,35 @@ class VitalityCard extends HTMLElement {
 
   render() {
     const status = element("p", this.message || "", { class: `status ${this.error ? "error" : ""}`, role: "status" });
+    if (this.mode !== "legacy") {
+      const header = add(element("header", null, { class: "header" }), element("h2", this.title));
+      const card = add(element("ha-card"), header, status);
+      if (!this.ready && this.error) card.append(button("Retry", () => this.boot()));
+      if (this.ready) {
+        header.append(button("Refresh", () => this.action(() => this.advanceToday())));
+        if (this.mode === "log") {
+          if (this.undo) header.append(button("Undo last log", () => {
+            const { table, id } = this.undo;
+            this.action(() => this.call(`delete_${table}`, { id }), "Log undone.");
+          }));
+          card.append(this.loggingPanel());
+        } else if (this.mode === "config") {
+          card.append(
+            this.collapsible("types", "Manage activity types", this.typeEditor()),
+            this.collapsible("garmin", "Configure Garmin", this.garminEditor()),
+            this.collapsible("export", "Export selected dates", add(element("div"),
+              this.dateControls(), this.exportPanel())));
+        } else if (this.period === "day") {
+          card.append(this.detailPanel());
+        } else {
+          card.append(this.charts(),
+            this.collapsible("history", "History", this.historyPanel(false)),
+            this.collapsible("analytics", "Exploratory comparisons", this.analyticsPanel()));
+        }
+      }
+      this.shadowRoot.replaceChildren(element("style", css), card);
+      return;
+    }
     const card = add(element("ha-card"), element("h2", this.title || "Vitality diary"), status);
     if (this.undo) card.append(button("Undo last log", () => {
       const { table, id } = this.undo;
@@ -782,3 +919,16 @@ class VitalityCard extends HTMLElement {
 }
 
 if (!customElements.get(tag)) customElements.define(tag, VitalityCard);
+for (const [mode, name, description, config] of [
+  ["log", "Vitality Log", "Log activities and energy check-ins.", {}],
+  ["stats", "Vitality Stats", "View a day or a week of diary and Garmin data.", { period: "week" }],
+  ["config", "Vitality Settings", "Manage activities, Garmin mappings, and CSV export.", {}],
+]) {
+  const type = `vitality-${mode}-card`;
+  if (customElements.get(type)) continue;
+  customElements.define(type, class extends VitalityCard {
+    mode = mode;
+    static getStubConfig() { return { type: `custom:${type}`, ...config }; }
+  });
+  (window.customCards ??= []).push({ type, name, description });
+}

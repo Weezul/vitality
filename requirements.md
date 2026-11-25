@@ -22,7 +22,7 @@ Logging must be effortless. The user must be able to explicitly configure new ac
 
 ### Functional requirements
 
-- Record morning restedness and evening energy/restedness on a consistent 0–100 integer scale (0 = completely exhausted, 100 = fully rested/energised).
+- Record morning restedness and evening energy/restedness on a consistent 1–10 integer scale (1 = completely exhausted, 10 = fully rested/energised).
 - Use one primary subjective score for the MVP; do not require separate mood, sleepiness or stress scores. Allow an optional note.
 - Support additional check-ins at any time of day, without overwriting morning or evening entries.
 - Allow manual selection of morning, evening or other check-in; do not infer check-in type solely from clock time.
@@ -91,7 +91,7 @@ Provide documented service/action schemas (`services.yaml`) with validation and 
 - `vitality.update_event`, `vitality.delete_event`: record-ID based changes.
 - Equivalent update/delete operations for check-ins, via authenticated actions or WebSocket commands.
 
-Use the existing Home Assistant Assist pipeline rather than building speech recognition, an LLM or a new conversation agent. Provide example scripts/custom sentences for simple requests such as “log coffee” and “log morning energy 80”. Where the installed conversation agent supports exposed scripts or tools with arguments, document how to invoke the generic logging action. Do not assume that exposing an entity or script automatically enables arbitrary activity arguments. Provide a working non-voice dashboard fallback. Voice is a convenience, not a blocker for MVP delivery.
+Use the existing Home Assistant Assist pipeline rather than building speech recognition, an LLM or a new conversation agent. Provide example scripts/custom sentences for simple requests such as “log coffee” and “log morning energy 8”. Where the installed conversation agent supports exposed scripts or tools with arguments, document how to invoke the generic logging action. Do not assume that exposing an entity or script automatically enables arbitrary activity arguments. Provide a working non-voice dashboard fallback. Voice is a convenience, not a blocker for MVP delivery.
 
 ## 6. Garmin integration (required in MVP)
 
@@ -162,7 +162,7 @@ Provide a usable dashboard with:
 
 - Today's morning/evening score, quick check-in controls and a generic event entry form (configured activity selector, optional quantity, recent event shortcuts).
 - Today's event list with timestamps, edit/delete controls and confirmation for destructive operations.
-- Energy line graph: morning and evening series over a shared local-date axis, 0–100 scale, optional intermediate check-ins in a detailed view.
+- Energy line graph: morning and evening series over a shared local-date axis, 1–10 scale, optional intermediate check-ins in a detailed view.
 - Daily event bar chart: selectable configured activity types/categories, occurrence count by default, optional quantity sum where units are compatible.
 - Today's automatically populated Garmin overview: actual bedtime, wake time, sleep duration and score; Body Battery latest value and intraday chart; recent workouts with time, duration and optional distance; optional HRV, resting heart rate, stress and training readiness. Daily detail must also work for earlier dates. Show last sync, stale/missing states and gaps; a morning/evening check-in remains subjective, never automatically filled from Garmin.
 - Garmin overlays or aligned charts for workouts, late exercise, sleep and available recovery metrics; keep scales and units explicit. Allow selecting Garmin metrics alongside configured activity counts and subjective scores. Add a daily timeline combining manual logs, check-ins and Garmin workouts.

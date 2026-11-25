@@ -46,7 +46,7 @@ log_checkin:
   fields:
     kind:
       name: Check-in type
-      description: Choose morning, evening or other.
+      description: Choose morning, evening, other, or mood.
       required: true
       selector:
         select:
@@ -54,14 +54,15 @@ log_checkin:
             - morning
             - evening
             - other
+            - mood
     score:
       name: Score
-      description: Subjective score from 0 to 100.
+      description: Whole-number subjective score from 1 to 10.
       required: true
       selector:
         number:
-          min: 0
-          max: 100
+          min: 1
+          max: 10
           step: 1
           mode: slider
     occurred_at:
@@ -135,20 +136,21 @@ update_checkin:
         text:
     kind:
       name: Check-in type
-      description: Choose morning, evening or other.
+      description: Choose morning, evening, other, or mood.
       selector:
         select:
           options:
             - morning
             - evening
             - other
+            - mood
     score:
       name: Score
-      description: Subjective score from 0 to 100.
+      description: Whole-number subjective score from 1 to 10.
       selector:
         number:
-          min: 0
-          max: 100
+          min: 1
+          max: 10
           step: 1
           mode: slider
     occurred_at:

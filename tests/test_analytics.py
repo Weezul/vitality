@@ -17,7 +17,7 @@ def test_correlation_and_missing_paired_days(diary, zone):
                 "events",
                 {"activity_type": "coffee", "quantity": i, "occurred_at": stamp},
             )
-        for kind, score in (("morning", 60 - i), ("evening", 50 + 2 * i)):
+        for kind, score in (("morning", 10 - i), ("evening", 1 + i)):
             if kind == "evening" and i == 6:
                 continue
             diary.save_record(
@@ -50,3 +50,27 @@ def test_bedtime_midnight_is_adjacent(zone):
         for day, hour in (("23", "23:55"), ("24", "00:05"))
     ]
     assert minutes[1] - minutes[0] == 10
+
+
+def test_mood_comparisons_average_ratings_and_respect_date_range(diary, zone):
+    diary.save_type({"id": "coffee", "name": "Coffee"})
+    diary.save_record(
+        "events", {"activity_type": "coffee", "occurred_at": "2026-11-01T08:00:00Z"}
+    )
+    for stamp, score in (("01T09:00:00Z", 4), ("01T12:00:00Z", 8), ("03T12:00:00Z", 9)):
+        diary.save_record(
+            "checkins",
+            {"kind": "mood", "score": score, "occurred_at": "2026-11-" + stamp},
+        )
+    query = {"start": "2026-11-01", "end": "2026-11-03", "activity_type": "coffee"}
+    same = analyze(diary, zone, dict(query, outcome="mood"))
+    assert same["n"] == 2
+    assert same["groups"]["upper_mean"] == 6
+    assert same["groups"]["lower_mean"] == 9
+    following = analyze(diary, zone, dict(query, outcome="next_mood"))
+    assert following["lag_days"] == following["n"] == 1
+    assert following["groups"]["lower_mean"] == 9
+    assert (
+        analyze(diary, zone, dict(query, outcome="next_mood", end="2026-11-02"))["n"]
+        == 0
+    )

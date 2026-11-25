@@ -198,7 +198,7 @@ def test_samples_dedup_restart_daily_status_and_prior_only(diary, zone):
     assert import_status(diary, zone)["body_battery"]["latest_day"] == DAY["start"]
     diary.save_record(
         "checkins",
-        {"kind": "morning", "score": 78, "occurred_at": "2026-11-24T10:50:00+01:00"},
+        {"kind": "morning", "score": 8, "occurred_at": "2026-11-24T10:50:00+01:00"},
     )
     assert history(diary, zone, DAY)["records"][0]["prior_battery"]["value"] == 75
     save_preferences(diary, "workouts", {"battery_tolerance": 10})

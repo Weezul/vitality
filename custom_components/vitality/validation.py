@@ -47,15 +47,15 @@ def number(value, *, low=None, high=None):
 
 
 def score(value):
-    result = number(value, low=0, high=100)
+    result = number(value, low=1, high=10)
     if not result.is_integer():
-        raise Invalid("Score must be a whole number from 0 to 100.")
+        raise Invalid("Score must be a whole number from 1 to 10.")
     return int(result)
 
 
 def kind(value):
     if value not in KINDS:
-        raise Invalid("Select morning, evening or other.")
+        raise Invalid("Select morning, evening, other or mood.")
     return value
 
 
