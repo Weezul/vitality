@@ -9,7 +9,7 @@ The target is Home Assistant Core **2026.11.3**. Use an administrator account. T
 1. Copy the repository’s entire `custom_components/vitality/` directory into `/config/custom_components/vitality/` on Home Assistant, using your existing configuration file access. Keep its subdirectories. Restart Home Assistant.
 2. Go to **Settings → Devices & services → Add integration**, search for **Vitality**, and finish the setup. Leave the sensor options off if diary statistics should stay visible only to administrators.
 3. Copy `dashboard/vitality-card.js` to `/config/www/vitality-card.js`, creating `www` if needed. Restart if this is the first time you created `www`.
-4. Open **Settings → Dashboards → Resources** and add `/local/vitality-card.js?v=6` as a **JavaScript module**. Enable **Advanced mode** in your HA profile if the Resources menu is hidden.
+4. Open **Settings → Dashboards → Resources** and add `/local/vitality-card.js?v=7` as a **JavaScript module**. Enable **Advanced mode** in your HA profile if the Resources menu is hidden.
 5. Add the cards to the dashboards of your choice using the card picker or manual card YAML below. For a single dashboard with four views, paste `dashboard/vitality-dashboard.yaml` into **Edit dashboard → ⋮ → Raw configuration editor**.
 6. Open **Vitality Settings → Manage activity types**. For example, create `coffee` named **Coffee**, category **Caffeine**, default unit `cup`, alias `espresso`. Stable IDs preserve historical grouping after a rename. Archiving hides the type from new logs and preserves its history.
 
@@ -19,7 +19,7 @@ For an existing installation, copy the supplied `brand/` folder to `/config/cust
 
 ## Choose your dashboard cards
 
-Add each YAML block as its own manual card. The weekly card opens to the last seven local calendar days and supports a one-day view, longer ranges, and custom dates. The daily card opens to today and lets you pick another date.
+Add each YAML block as its own manual card. The Vitality Stats card opens to the last seven local calendar days and supports a one-day view, longer ranges, and custom dates. The daily card opens to today and lets you pick another date.
 
 ```yaml
 type: custom:vitality-log-card
@@ -64,12 +64,12 @@ The seven-day window includes today in Home Assistant's timezone. Entities with 
 
 Back up the database before upgrading. Vitality converts saved subjective scores by dividing by 10, rounding to the nearest whole number with halves rounded up, and applying a minimum of 1. For example, 0 becomes 1, 45 becomes 5, and 100 becomes 10. Update automations or scripts that send scores, and replace the existing Assist energy example if you use it. Recorder history for existing latest-score entities can contain earlier 0–100 values.
 
-If a form still asks for a score out of 100, update both the integration directory and the dashboard JavaScript. Restart Home Assistant, edit the existing dashboard resource to use `/local/vitality-card.js?v=6`, and reload the dashboard. For Assist, replace the old morning-energy sentence automation with the supplied perceived-energy version and reload automations.
+If a form still asks for a score out of 100, update both the integration directory and the dashboard JavaScript. Restart Home Assistant, edit the existing dashboard resource to use `/local/vitality-card.js?v=7`, and reload the dashboard. For Assist, replace the old morning-energy sentence automation with the supplied perceived-energy version and reload automations.
 
 ## Log, review and compare
 
-- Use **Perceived Energy** to log a whole number from 1 (exhausted) to 10 (fully energised) any time. Each rating has its own timestamp. **Day** and **Week** plot each rating alongside mood at its recorded time. Existing morning and evening ratings appear in both charts at their original timestamps.
-- Use **Rate mood** to log a whole number from 1 (very low) to 10 (very good) whenever you like. Every rating has its own timestamp. **Day** shows the intraday chart and individual ratings in the timeline. **Week** plots both rating series across the selected dates.
+- Use **Perceived Energy** to log a whole number from 1 (exhausted) to 10 (fully energised) any time. Each rating has its own timestamp. **Day** and **Stats** plot each rating alongside mood at its recorded time. Existing morning and evening ratings appear in both charts at their original timestamps.
+- Use **Rate mood** to log a whole number from 1 (very low) to 10 (very good) whenever you like. Every rating has its own timestamp. **Day** shows the intraday chart and individual ratings in the timeline. **Stats** plots both rating series across the selected dates.
 - To log an activity, choose a type and save the form, or use a quick-log button and **Undo last log** if needed. Each save is one occurrence. Quantities are grouped by unit. Backdating and time corrections require a timestamp such as `2026-11-24T08:00:00+01:00`, including the offset for ambiguous clock times.
 - Use the timeline date to review a single day or the history filters to search a range. Edit a record in place or confirm its deletion. Day boundaries and displayed times use the HA timezone. The dashboard shows chart ranges of 1, 7, 30 or 90 days or a custom range up to 366 days.
 - Choose an activity or category and a count or single-unit quantity under **Exploratory comparisons**. Choose a Garmin series to see it in a separate chart for the same date range.
@@ -121,7 +121,7 @@ To use the built-in Home Assistant conversation agent, open `dashboard/assist-au
 | Symptom | Check |
 | --- | --- |
 | Vitality is missing from Add integration | Check `/config/custom_components/vitality/manifest.json`, case of the directory name, and HA logs after restarting. |
-| Custom element does not exist | Check the file in `/config/www`, open `/local/vitality-card.js?v=6` as an administrator and check that it serves JavaScript. Confirm the resource uses the JavaScript module type and hard refresh. |
+| Custom element does not exist | Check the file in `/config/www`, open `/local/vitality-card.js?v=7` as an administrator and check that it serves JavaScript. Confirm the resource uses the JavaScript module type and hard refresh. |
 | Administrator required | Sign in as an HA administrator and confirm that the dashboard connection uses that account. |
 | Garmin metric is missing, deferred or stale | Check **Configure Garmin → Source and import status**, verify the value/date/observation mappings and HA entity availability, then resync. Bedtime and sleep score may arrive at different times. |
 | Database error | Check available disk space, HA configuration directory write access and HA logs. If the file came from a newer Vitality version, restore a compatible backup or use the newer version. |

@@ -13,7 +13,7 @@ views:
     cards:
       - type: custom:vitality-stats-card
         period: day
-  - title: Week
+  - title: Stats
     path: week
     icon: mdi:heart-pulse
     type: panel

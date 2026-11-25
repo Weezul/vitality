@@ -131,6 +131,7 @@ for (const width of [360, 1280]) {
     await fits();
 
     await mount(page, "vitality-stats-card", { period: "week" });
+    await expect(page.getByRole("heading", { name: "Vitality Stats", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "7 days" })).toHaveAttribute("aria-pressed", "true");
     const ratings = page.getByRole("img", { name: "Perceived Energy and Mood (1–10)" });
     await expect(ratings).toBeVisible();

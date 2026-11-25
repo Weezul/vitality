@@ -208,7 +208,12 @@ class VitalityCard extends HTMLElement {
     if (this.mode === "stats" && !["day", "week"].includes(this.period)) {
       throw new Error("Choose day or week for period.");
     }
-    const titles = { legacy: "Vitality diary", log: "Log Vitality", stats: "Vitality " + this.period, config: "Vitality settings" };
+    const titles = {
+      legacy: "Vitality diary",
+      log: "Log Vitality",
+      stats: this.period === "day" ? "Vitality Day" : "Vitality Stats",
+      config: "Vitality settings",
+    };
     this.title = config.title || titles[this.mode];
     if (!this.booted) this.preset = this.mode === "stats" ? 7 : 30;
   }
