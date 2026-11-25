@@ -1,13 +1,13 @@
 # Vitality
 
-Vitality is a single-user diary for Home Assistant. Log subjective energy, restedness and activities, then compare them with your existing Garmin Connect data. The diary, dashboard, analysis and database all run inside Home Assistant.
+Vitality is a single-user diary for Home Assistant. Log perceived energy, mood and activities, then compare them with your existing Garmin Connect data. The diary, dashboard, analysis and database all run inside Home Assistant.
 
 ## Install on Home Assistant OS
 
 The target is Home Assistant Core **2026.11.3**. Use an administrator account. The Garmin Connect integration is optional for manual logging.
 
 1. Copy the repository’s entire `custom_components/vitality/` directory into `/config/custom_components/vitality/` on Home Assistant, using your existing configuration file access. Keep its subdirectories. Restart Home Assistant.
-2. Go to **Settings → Devices & services → Add integration**, search for **Vitality**, and finish the setup. Leave the sensor options off if diary statistics should stay visible only to administrators.
+2. Go to **Settings → Devices & services → Add integration**, search for **Vitality**, and finish the setup. Leave the sensor options off to keep Vitality's diary summaries behind its administrator-only dashboard and API.
 3. Copy `dashboard/vitality-card.js` to `/config/www/vitality-card.js`, creating `www` if needed. Restart if this is the first time you created `www`.
 4. Open **Settings → Dashboards → Resources** and add `/local/vitality-card.js?v=9` as a **JavaScript module**. Enable **Advanced mode** in your HA profile if the Resources menu is hidden.
 5. Add the cards to the dashboards of your choice using the card picker or manual card YAML below. For a single dashboard with four views, paste `dashboard/vitality-dashboard.yaml` into **Edit dashboard → ⋮ → Raw configuration editor**.
@@ -16,6 +16,10 @@ The target is Home Assistant Core **2026.11.3**. Use an administrator account. T
 [Home Assistant dashboard resources and custom cards](https://contributors.home-assistant.io/frontend/custom-ui/card/)
 
 For an existing installation, copy the supplied `brand/` folder to `/config/custom_components/vitality/brand/` to add the Vitality icon. Restart Home Assistant and refresh **Settings → Devices & services**. Home Assistant Core 2026.3 and later loads these images automatically. [Home Assistant integration branding](https://contributors.home-assistant.io/core/integrations/brands/)
+
+## Update an existing installation
+
+Back up the database before upgrading the integration. Copy the current `custom_components/vitality/` directory and `dashboard/vitality-card.js` to the locations above. Restart Home Assistant to load the integration and apply any database migrations. Edit the existing dashboard resource to use `/local/vitality-card.js?v=9`, then refresh the dashboard. If you're already running integration 1.4.0, the history layout update only needs the new JavaScript file and resource URL.
 
 ## Choose your dashboard cards
 
@@ -58,20 +62,19 @@ Open **Settings → Devices & services → Vitality → Configure** and enable *
 - Latest and average mood for today, plus the seven-day average of daily mood averages. Days without ratings are omitted.
 - Garmin workout counts for today and the last seven days, today's sleep score, and today's latest observed Body Battery. The weekly workout count reports the number of days with recorded workout data in its attributes.
 
-The seven-day window includes today in Home Assistant's timezone. Entities with a missing reading show **Unknown**. The separate latest-score option exposes the last morning and evening check-ins, with their timestamps, even when they were logged on a previous date. Other Home Assistant users may be able to read enabled entities.
+The seven-day window includes today in Home Assistant's timezone. Entities with a missing reading show **Unknown**. The separate latest-score option exposes the most recent entries recorded as morning or evening, with their timestamps. Use the statistics option for new perceived energy and mood ratings. Other Home Assistant users may be able to read enabled entities.
 
 ### Upgrade from the 0–100 scale
 
 Back up the database before upgrading. Vitality converts saved subjective scores by dividing by 10, rounding to the nearest whole number with halves rounded up, and applying a minimum of 1. For example, 0 becomes 1, 45 becomes 5, and 100 becomes 10. Update automations or scripts that send scores, and replace the existing Assist energy example if you use it. Recorder history for existing latest-score entities can contain earlier 0–100 values.
 
-If a form still asks for a score out of 100, update both the integration directory and the dashboard JavaScript. Restart Home Assistant, edit the existing dashboard resource to use `/local/vitality-card.js?v=9`, and reload the dashboard. For Assist, replace the old morning-energy sentence automation with the supplied perceived-energy version and reload automations.
+If a form still asks for a score out of 100, follow the update steps above. For Assist, replace the old morning-energy sentence automation with the supplied perceived-energy version and reload automations.
 
 ## Log, review and compare
 
-- Use **Perceived Energy** to log a whole number from 1 (exhausted) to 10 (fully energised) any time. Each rating has its own timestamp. **Day** and **Stats** plot each rating alongside mood at its recorded time. Existing morning and evening ratings appear in both charts at their original timestamps.
-- Use **Rate mood** to log a whole number from 1 (very low) to 10 (very good) whenever you like. Every rating has its own timestamp. **Day** shows the intraday chart and individual ratings in the timeline. **Stats** plots both rating series across the selected dates.
+- Use **Perceived Energy** to rate energy from 1 (exhausted) to 10 (fully energised), and **Rate mood** to rate mood from 1 (very low) to 10 (very good). You can log either at any time. **Day** and **Stats** plot both series at their recorded times, including morning and evening energy readings from older versions. The chart displays up to 1,500 ratings per series for the selected range. Use check-in CSV export for the full history.
 - To log an activity, choose a type and save the form, or use a quick-log button and **Undo last log** if needed. Use **Vitality Settings → Manage activity types → Show in Quick Log** to choose which activities get shortcuts. Existing and new types default to **Yes**. Hidden shortcuts leave the activity available in the manual picker and history. Each save is one occurrence. Quantities are grouped by unit. Backdating and time corrections require a timestamp such as `2026-11-24T08:00:00+01:00`, including the offset for ambiguous clock times.
-- Use the timeline date to review a single day or the history filters to search a range. Edit a record in place or confirm its deletion. Day boundaries and displayed times use the HA timezone. The dashboard shows chart ranges of 1, 7, 30 or 90 days or a custom range up to 366 days.
+- Use **Day** to review a single date or the **History** filters in **Stats** to search a range. Each row shows the timestamp at the right above its actions. Manual entries can be edited or deleted, and Garmin workouts can be corrected or excluded from totals. **Stats** offers 1, 7, 30 and 90 day presets and custom ranges up to 366 days. Day boundaries and displayed times use the Home Assistant timezone.
 - Choose an activity or category and a count or single-unit quantity under **Exploratory comparisons**. Choose a Garmin series to see it in a separate chart for the same date range.
 - **Exploratory comparisons** supports same- or next-day averages of perceived energy and mood. It excludes missing pairs and keeps both dates within the chosen range. Quantity comparisons exclude days with activity in other units and no selected unit. Timestamp metrics use local minutes relative to the configurable evening anchor, so 23:55 and 00:05 remain ten minutes apart. An optional threshold shows group counts, means and their difference. Pearson correlation requires at least seven pairs with variation in both values and is flagged below 30 pairs. Logging gaps, sleep, illness and work stress can affect the result. Associations do not establish cause.
 
@@ -87,7 +90,7 @@ Open **Configure Garmin** to see mappings and **Source and import status**. Defa
 | Daily Body Battery summaries, HRV, heart rate, stress and readiness | A dated source observation where available. Defaults without source dates can infer a date from a fresh HA change and carry that provenance. A cached value at midnight or startup does not fill a new day. Optional sensors can be disabled or remapped when their semantics differ. |
 | Recent and latest workouts | All distinct IDs exposed in the cached list plus the supplemental latest sensor. The defaults interpret offset-aware `startTime` (or explicitly named `startTimeGMT`), duration in seconds and distance in meters. Confirm source units in HA and set the source unit or **Ignore** when uncertain. Raw fields retained locally are limited to identifiers, source name/type, timestamps, duration, distance and heart-rate summaries. |
 
-Vitality reads the HA state cache on startup, on source updates, and every 15 minutes. **Resync cached states** and `vitality.resync_garmin` do the same manually. **Backfill visible workouts in range** reads the existing rolling list and supplemental source for the selected range. The target exposed ten list entries during inspection, so older workouts outside that list may be missing. Missing workout coverage is shown as unknown. For a state-based Body Battery mapping, **Import HA history for this day** can copy up to 1,500 state changes still available through HA History. Those samples carry HA history provenance and cannot recover readings that HA did not record or has purged. [HA History REST API](https://developers.home-assistant.io/docs/api/rest/#get-apihistoryperiodtimestamp)
+Vitality reads the HA state cache on startup, on source updates, and every 15 minutes. **Resync cached states** and `vitality.resync_garmin` do the same manually. To backfill workouts, set the date range under **Export selected dates** on the Settings card, then use **Configure Garmin → Backfill visible workouts in range**. This reads the existing rolling list and supplemental source for that range. The target exposed ten list entries during inspection, so older workouts outside that list may be missing. Missing workout coverage is shown as unknown. For a state-based Body Battery mapping, **Import HA history for this day** can copy up to 1,500 state changes still available through HA History. Those samples carry HA history provenance and cannot recover readings that HA did not record or has purged. [HA History REST API](https://developers.home-assistant.io/docs/api/rest/#get-apihistoryperiodtimestamp)
 
 In **Workout sources and rules**, pair a Garmin type with a catalogue ID using entries such as `running=run, cycling=ride`. Unmapped workouts retain their Garmin label. Set the late-exercise threshold and eligible types there. The threshold uses HA local time and includes workouts starting exactly at the threshold. Changing the rule or mapping recomputes historical classifications. The late flag is part of the workout, so it does not add an occurrence. Use **Edit workout** to add a local timestamp or duration correction, notes, or an explicit link to a manual log. Use **Exclude from totals** to reconcile duplicates in your counts. Excluded workouts remain visible and can be restored. Garmin resyncs preserve local edits and exclusions.
 
@@ -114,7 +117,7 @@ To use the built-in Home Assistant conversation agent, open `dashboard/assist-au
 - **Export selected dates** downloads CSV for events (including workouts and corrections), check-ins, daily observations or samples. The browser receives data over the existing authenticated connection. CSV is for analysis, and cells starting with spreadsheet formula characters are escaped. Store downloads privately.
 - The history, catalogue and mappings live in `/config/vitality.sqlite`, separate from Recorder. The DB is migrated transactionally when the integration starts. Removing the integration entry leaves the file for reinstall or manual recovery.
 - For a consistent standalone backup, stop HA Core using your normal HAOS management access, copy `/config/vitality.sqlite` to a private backup location, then start Core. To restore, stop Core, retain the current file as a separate backup, replace it with the saved file, and start Core. A Home Assistant backup that includes its configuration is also useful. Check that an extracted backup contains the database before depending on it. Restoring to a different HA instance may require remapping sensors because their registry IDs can differ. [Home Assistant backups](https://www.home-assistant.io/common-tasks/general/#backups)
-- Before upgrading, save the database. Replace the integration directory and card asset with the matching release, restart Core and bump the dashboard resource URL’s version parameter. Keep the old database copy if you need to roll back a migrated schema.
+- Keep the pre-upgrade database backup if you need to roll back a migrated schema.
 
 ## Troubleshooting and validation
 

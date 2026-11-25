@@ -1,6 +1,6 @@
 # Vitality: Requirements for Home Assistant
 
-**Status:** Final implementation brief, 24 November 2026. Use this file in the existing Vitality repository; do not create a second project. The requirements specify the desired behaviour, not an already implemented integration. Items described as proposed defaults may be adjusted if necessary, with the decision documented.
+**Status:** Current requirements, revised 25 November 2026 to reflect the implemented dashboard and diary workflows. See the [README](README.md) for setup and the [architecture notes](ARCHITECTURE.md) for implementation decisions and verification limits.
 
 ## 1. Objective
 
@@ -26,7 +26,7 @@ Logging must be effortless. The user must be able to explicitly configure new ac
 - Allow a separate optional 1–10 mood rating. Allow an optional note with each rating.
 - Allow multiple timestamped energy and mood ratings at any time of day.
 - Include previously recorded morning and evening scores in perceived energy trends at their original timestamps.
-- Permit backdated entries and correction/deletion. Preserve all check-ins unless explicitly deleted. For the daily graph, use the latest check-in of each designated type for that local date; missing values remain null, not zero.
+- Permit backdated entries, corrections and deletion. Preserve all check-ins unless explicitly deleted. Plot each energy or mood rating at its recorded time. Use the latest rating and arithmetic average for the daily summaries. Treat missing ratings as unknown.
 - Provide a mobile-friendly slider or numeric input and a clear save action. Changing a slider alone must not create a record.
 - Expose latest and average perceived energy and mood as optional Home Assistant sensors. Optionally expose helpers or a script for convenient Assist interaction.
 - Optional reminders through ordinary Home Assistant automations; no mandatory notification schedule.
@@ -53,11 +53,11 @@ activity_types:
     category: Recovery
 ```
 
-- Each type has a stable unique ID, display name, optional category, optional default unit, optional aliases and enabled/archived status.
+- Each type has a stable unique ID, display name, optional category, optional default unit, optional aliases, archive status and a **Show in Quick Log** flag.
 - Allow adding, renaming, editing and archiving types without restarting Home Assistant. Do not automatically create types from logging requests. Reject unknown or ambiguous types with a helpful error.
 - Resolve names and aliases case-insensitively, trimming whitespace; enforce unambiguous matching. Preserve stable IDs when renaming. Archive rather than delete types referenced by history; archived types remain available in historical filters but cannot be used for new manual logs.
 - Configuration changes must persist across restarts. The YAML above illustrates the logical model; YAML editing is not required. Store the catalogue in persistent integration-managed storage with schema migrations.
-- Populate the dashboard activity selector and quick-log shortcuts from enabled types. Do not require separate actions, sensors or code for each type.
+- Populate the manual picker with all unarchived types. Show Quick Log shortcuts for unarchived types with the flag enabled. Default the flag to enabled for new and existing types. Honor it independently of manual logging, history and entity exposure.
 
 Provide one action `vitality.log_event` for all configured manual activities:
 
@@ -143,8 +143,8 @@ The recent-activities attribute was a list containing 10 records at inspection. 
 
 Suggested schema (implementation may refine names):
 
-- `activity_types`: stable id, display_name, category, default_unit, aliases, archived status.
-- `events`: id, nullable activity_type_id (only nullable for unmapped imports), original source name, quantity, unit, occurred_at_utc, duration_minutes, notes, source, external_id, created_at_utc, updated_at_utc, optional source metadata.
+- `activity_types`: stable ID, display name, category, default unit, aliases, archive status and Quick Log visibility.
+- `events`: ID, activity type ID, quantity, unit, occurrence timestamp, duration, notes and creation/update timestamps. Store imported activities separately in `workouts` and combine them with manual records at query time.
 - `checkins`: id, kind (energy/mood; morning/evening/other for existing records and callers), score, occurred_at_utc, notes, created_at_utc, updated_at_utc.
 - `daily_observations`: id, local_date, metric_key, typed value (numeric or timestamp), unit, source, observed_at_utc, imported_at_utc, date/observation provenance; unique by local_date, metric_key and source.
 - `metric_samples`: metric_key, source, typed numeric value, unit, observed_at_utc, timestamp provenance, imported_at_utc; unique by source, metric key and observation timestamp; index by metric/time.
@@ -160,14 +160,14 @@ Retain diary history indefinitely by default, independent of recorder purge sett
 
 Provide a usable dashboard with:
 
-- Today's latest perceived energy and mood, rating controls and a generic event entry form (configured activity selector, optional quantity, recent event shortcuts).
-- Today's event list with timestamps, edit/delete controls and confirmation for destructive operations.
-- Plot perceived energy and mood as two 1–10 line series at their recorded times in the selected range.
-- Daily event bar chart: selectable configured activity types/categories, occurrence count by default, optional quantity sum where units are compatible.
+- Provide separate **Log**, **Day**, **Stats** and **Settings** views in the example dashboard. **Log** contains the rating forms, manual activity picker and configurable shortcuts. **Settings** contains catalogue management, Garmin mappings and CSV export.
+- Display today's latest perceived energy and mood in **Day**. Show timestamps at the top right of history and timeline rows, above right-aligned actions. Confirm deletions.
+- Plot perceived energy and mood as two 1–10 line series at their recorded times in the selected range. Cap the chart at 1,500 ratings per series and keep the full history available through CSV.
+- Provide activity counts through optional native sensors and activity counts or compatible-unit quantities through exploratory comparisons.
 - Today's automatically populated Garmin overview: actual bedtime, wake time, sleep duration and score; Body Battery latest value and intraday chart; recent workouts with time, duration and optional distance; optional HRV, resting heart rate, stress and training readiness. Daily detail must also work for earlier dates. Show last sync, stale/missing states and gaps; a perceived energy or mood rating remains subjective, never automatically filled from Garmin.
 - Garmin overlays or aligned charts for workouts, late exercise, sleep and available recovery metrics; keep scales and units explicit. Allow selecting Garmin metrics for the same range as energy and mood. Use activity counts as comparison inputs. Add a daily timeline combining manual logs, check-ins and Garmin workouts.
 - Handle edits and deletions with the imported-record override/exclusion rules above. Provide a convenient undo or confirmation for accidental quick logging; display a success acknowledgement only after persistence. Do not require navigation through the configuration flow to log an event.
-- Date range presets: 7, 30 and 90 days, plus custom range. Align charts to the same date range; show missing check-ins as gaps and days without recorded events as zero counts, clearly labelled as logged events rather than proof of no consumption/activity. Imported workout and metric coverage gaps must be distinguished from known zero values.
+- Offer **Stats** presets for 1, 7, 30 and 90 days plus custom ranges up to 366 days. Default to seven days and full section width in a Sections view. Align charts to the selected range and distinguish unavailable imported workout or metric coverage from known zero values.
 - Event history filters by name, category, source and date. Support pagination or bounded queries.
 - Readable mobile layout, standard Home Assistant theme support, accessible labels and non-colour-only series identification.
 
@@ -200,7 +200,7 @@ Use pytest and suitable Home Assistant test fixtures. Include automated tests fo
 Acceptance scenarios:
 
 1. Install via custom integration files, restart Home Assistant, configure through UI without an external server.
-2. Configure Coffee and log it three times; today's chart shows three occurrences. Add Red Bull through configuration and log it without code changes or restart. Unknown types are rejected; renaming preserves historical grouping; archiving preserves history and prevents new manual logs.
+2. Configure Coffee and log it three times. With statistics sensors enabled, verify three occurrences in the Coffee today entity. Add Red Bull from Settings and log it without a restart. Turn off its Quick Log flag and verify that its shortcut disappears while manual logging still works. Verify that renaming preserves historical grouping and archiving prevents new manual logs while preserving history.
 3. Log one event with quantity 2; occurrence count is 1 and quantity total is 2. Configured name/alias case and whitespace variants resolve correctly; incompatible units are not summed.
 4. Save perceived energy 8, mood 5, and a second energy rating of 6. Verify each appears at its own timestamp.
 5. Backdate, edit and delete a record; all affected aggregates update correctly.
@@ -209,7 +209,7 @@ Acceptance scenarios:
 8. Automatically populate sleep score, bedtime, wake time and duration on the wake date without a manual check-in. Test previous-day bedtime, staggered updates, stale previous-night values after midnight, late sync and corrected records. Test missing and invalid values; no zero substitution.
 9. Capture a series of Body Battery changes, retain samples and daily summaries separately, and show gaps during outages. Verify deduplication after restart, no stale samples imported as fresh, and the graph for today and earlier days. Verify configurable optional Garmin metric mappings and availability status.
 10. A workout starting at or after the configured threshold is classified as late without doubling workout totals. Verify local midnight and both Swiss DST transitions.
-11. Select 7/30/90-day ranges and newly configured activity types; charts align and counts are correct. Verify on a narrow mobile viewport.
+11. Select the one-day and multi-day ranges and verify both rating series use the selected times. On narrow and wide viewports, verify history timestamps appear above the right-aligned actions.
 12. Verify an existing Assist pipeline can invoke at least one documented logging example where supported; otherwise document the exact limitation and demonstrate the dashboard/action fallback.
 13. Export data and verify records, units and timestamps. Verify unauthorized history/export access is denied.
 14. Phase 2: use deterministic fixtures to verify same-day and next-day pairing, missing data handling, constant series, minimum sample handling and known correlation results.
@@ -267,7 +267,7 @@ Confirmed decisions are marked below; other items are proposed implementation de
 - Single user, one subjective score per check-in, optional quantities and notes.
 - Dedicated SQLite storage, indefinite retention, no separate server.
 - Late exercise threshold: 18:00 local time.
-- Default dashboard range: 30 days.
+- Default range: seven days in Stats, today in Day, and 30 days in Settings export.
 - Confirmed: Garmin automatic import is part of MVP, including sleep score, actual bedtime/wake time, Body Battery and activities. The live source entities and recent-activity list were inspected read-only; source schemas/units, update cadence, exact Home Assistant/integration versions and Assist capabilities still require verification. No claim of tested import behaviour yet.
 - Proposed: 15-minute local reconciliation, all currently visible recent workouts on first setup, no guarantees of full historical backfill. Optional Garmin metrics enabled when available; user can configure them. No external Garmin polling.
 - Proposed: phase 2 quantitative analytics after MVP visual comparisons, optional quantities, single-user access, admin-only sensitive history if compatible with intended Assist/dashboard use.
