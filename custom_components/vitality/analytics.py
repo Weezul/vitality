@@ -11,8 +11,19 @@ OUTCOMES = {
     "change": "Evening minus morning score on day D",
     "mood": "Average mood on day D",
     "next_mood": "Average mood on day D+1",
+    "energy": "Average perceived energy on day D",
+    "next_energy": "Average perceived energy on day D+1",
 }
-NEXT_DAY_OUTCOMES = {"next_morning": "morning", "next_mood": "mood_average"}
+NEXT_DAY_OUTCOMES = {
+    "next_morning": "morning",
+    "next_mood": "mood_average",
+    "next_energy": "energy_average",
+}
+SAME_DAY_OUTCOMES = {
+    "evening": "evening",
+    "mood": "mood_average",
+    "energy": "energy_average",
+}
 
 
 def clock_minutes(timestamp, zone, anchor):
@@ -79,7 +90,11 @@ def analyze(diary, zone, data):
         else:
             value = row[predictor]
         if outcome in NEXT_DAY_OUTCOMES:
-            score = rows[index + 1][NEXT_DAY_OUTCOMES[outcome]] if index + 1 < len(rows) else None
+            score = (
+                rows[index + 1][NEXT_DAY_OUTCOMES[outcome]]
+                if index + 1 < len(rows)
+                else None
+            )
         elif outcome == "change":
             score = (
                 row["evening"] - row["morning"]
@@ -87,7 +102,7 @@ def analyze(diary, zone, data):
                 else None
             )
         else:
-            score = row["mood_average"] if outcome == "mood" else row["evening"]
+            score = row[SAME_DAY_OUTCOMES[outcome]]
         if value is not None and score is not None:
             pairs.append((value, score))
     coefficient = None

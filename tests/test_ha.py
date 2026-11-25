@@ -216,7 +216,7 @@ def test_registry_state_events_services_and_websocket_reload(tmp_path):
             ).read_text()
         )
         for automation, utterance in zip(
-            examples, ("log coffee", "log mood 6", "log morning energy 8"), strict=True
+            examples, ("log coffee", "log mood 6", "log perceived energy 8"), strict=True
         ):
             command = automation["triggers"][0]["command"]
             intents = Intents.from_dict(
@@ -279,7 +279,7 @@ def test_registry_state_events_services_and_websocket_reload(tmp_path):
         chart = (await ws("samples", dates)).send_result.call_args.args[1]
         assert len(chart["samples"]) == 2
         assert (await ws("daily", dates)).send_result.call_args.args[1][0][
-            "morning"
+            "energy"
         ] == 8
         workout_date = workout_at.astimezone(entry.runtime_data.zone).date().isoformat()
         workout_dates = {"start": workout_date, "end": workout_date}

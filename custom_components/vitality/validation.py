@@ -55,7 +55,7 @@ def score(value):
 
 def kind(value):
     if value not in KINDS:
-        raise Invalid("Select morning, evening, other or mood.")
+        raise Invalid("Select a valid check-in type.")
     return value
 
 

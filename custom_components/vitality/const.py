@@ -3,6 +3,6 @@
 DOMAIN = "vitality"
 DB_NAME = "vitality.sqlite"
 SIGNAL = "vitality_checkins_changed"
-KINDS = ("morning", "evening", "other", "mood")
+KINDS = ("morning", "evening", "other", "mood", "energy")
 MAX_DAYS = 366
 MAX_PAGE = 200

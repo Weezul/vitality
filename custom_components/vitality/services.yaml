@@ -46,15 +46,16 @@ log_checkin:
   fields:
     kind:
       name: Check-in type
-      description: Choose morning, evening, other, or mood.
+      description: Choose energy for perceived energy, or mood for a mood rating. Older check-in types are also supported.
       required: true
       selector:
         select:
           options:
+            - energy
+            - mood
             - morning
             - evening
             - other
-            - mood
     score:
       name: Score
       description: Whole-number subjective score from 1 to 10.
@@ -136,14 +137,15 @@ update_checkin:
         text:
     kind:
       name: Check-in type
-      description: Choose morning, evening, other, or mood.
+      description: Choose energy for perceived energy, or mood for a mood rating. Older check-in types are also supported.
       selector:
         select:
           options:
+            - energy
+            - mood
             - morning
             - evening
             - other
-            - mood
     score:
       name: Score
       description: Whole-number subjective score from 1 to 10.

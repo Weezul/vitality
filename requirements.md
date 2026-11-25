@@ -22,13 +22,13 @@ Logging must be effortless. The user must be able to explicitly configure new ac
 
 ### Functional requirements
 
-- Record morning restedness and evening energy/restedness on a consistent 1–10 integer scale (1 = completely exhausted, 10 = fully rested/energised).
-- Use one primary subjective score for the MVP; do not require separate mood, sleepiness or stress scores. Allow an optional note.
-- Support additional check-ins at any time of day, without overwriting morning or evening entries.
-- Allow manual selection of morning, evening or other check-in; do not infer check-in type solely from clock time.
+- Record perceived energy on a 1–10 integer scale (1 = completely exhausted, 10 = fully energised).
+- Allow a separate optional 1–10 mood rating. Allow an optional note with each rating.
+- Allow multiple timestamped energy and mood ratings at any time of day.
+- Include previously recorded morning and evening scores in perceived energy trends at their original timestamps.
 - Permit backdated entries and correction/deletion. Preserve all check-ins unless explicitly deleted. For the daily graph, use the latest check-in of each designated type for that local date; missing values remain null, not zero.
 - Provide a mobile-friendly slider or numeric input and a clear save action. Changing a slider alone must not create a record.
-- Expose current/latest morning and evening scores as Home Assistant sensors, including timestamps. Optionally expose helpers or a script for convenient Assist interaction.
+- Expose latest and average perceived energy and mood as optional Home Assistant sensors. Optionally expose helpers or a script for convenient Assist interaction.
 - Optional reminders through ordinary Home Assistant automations; no mandatory notification schedule.
 
 ## 4. Configurable activity types and generic event logging
@@ -91,7 +91,7 @@ Provide documented service/action schemas (`services.yaml`) with validation and 
 - `vitality.update_event`, `vitality.delete_event`: record-ID based changes.
 - Equivalent update/delete operations for check-ins, via authenticated actions or WebSocket commands.
 
-Use the existing Home Assistant Assist pipeline rather than building speech recognition, an LLM or a new conversation agent. Provide example scripts/custom sentences for simple requests such as “log coffee” and “log morning energy 8”. Where the installed conversation agent supports exposed scripts or tools with arguments, document how to invoke the generic logging action. Do not assume that exposing an entity or script automatically enables arbitrary activity arguments. Provide a working non-voice dashboard fallback. Voice is a convenience, not a blocker for MVP delivery.
+Use the existing Home Assistant Assist pipeline rather than building speech recognition, an LLM or a new conversation agent. Provide example scripts/custom sentences for simple requests such as “log coffee” and “log perceived energy 8”. Where the installed conversation agent supports exposed scripts or tools with arguments, document how to invoke the generic logging action. Do not assume that exposing an entity or script automatically enables arbitrary activity arguments. Provide a working non-voice dashboard fallback. Voice is a convenience, not a blocker for MVP delivery.
 
 ## 6. Garmin integration (required in MVP)
 
@@ -145,7 +145,7 @@ Suggested schema (implementation may refine names):
 
 - `activity_types`: stable id, display_name, category, default_unit, aliases, archived status.
 - `events`: id, nullable activity_type_id (only nullable for unmapped imports), original source name, quantity, unit, occurred_at_utc, duration_minutes, notes, source, external_id, created_at_utc, updated_at_utc, optional source metadata.
-- `checkins`: id, kind (morning/evening/other), score, occurred_at_utc, notes, created_at_utc, updated_at_utc.
+- `checkins`: id, kind (energy/mood; morning/evening/other for existing records and callers), score, occurred_at_utc, notes, created_at_utc, updated_at_utc.
 - `daily_observations`: id, local_date, metric_key, typed value (numeric or timestamp), unit, source, observed_at_utc, imported_at_utc, date/observation provenance; unique by local_date, metric_key and source.
 - `metric_samples`: metric_key, source, typed numeric value, unit, observed_at_utc, timestamp provenance, imported_at_utc; unique by source, metric key and observation timestamp; index by metric/time.
 - `import_exclusions` and local overrides/annotations: stable source/external ID, exclusion status and user-supplied corrections. Imported source facts must not be overwritten by user edits or vice versa.
@@ -160,12 +160,12 @@ Retain diary history indefinitely by default, independent of recorder purge sett
 
 Provide a usable dashboard with:
 
-- Today's morning/evening score, quick check-in controls and a generic event entry form (configured activity selector, optional quantity, recent event shortcuts).
+- Today's latest perceived energy and mood, rating controls and a generic event entry form (configured activity selector, optional quantity, recent event shortcuts).
 - Today's event list with timestamps, edit/delete controls and confirmation for destructive operations.
-- Energy line graph: morning and evening series over a shared local-date axis, 1–10 scale, optional intermediate check-ins in a detailed view.
+- Plot perceived energy and mood as two 1–10 line series at their recorded times in the selected range.
 - Daily event bar chart: selectable configured activity types/categories, occurrence count by default, optional quantity sum where units are compatible.
-- Today's automatically populated Garmin overview: actual bedtime, wake time, sleep duration and score; Body Battery latest value and intraday chart; recent workouts with time, duration and optional distance; optional HRV, resting heart rate, stress and training readiness. Daily detail must also work for earlier dates. Show last sync, stale/missing states and gaps; a morning/evening check-in remains subjective, never automatically filled from Garmin.
-- Garmin overlays or aligned charts for workouts, late exercise, sleep and available recovery metrics; keep scales and units explicit. Allow selecting Garmin metrics alongside configured activity counts and subjective scores. Add a daily timeline combining manual logs, check-ins and Garmin workouts.
+- Today's automatically populated Garmin overview: actual bedtime, wake time, sleep duration and score; Body Battery latest value and intraday chart; recent workouts with time, duration and optional distance; optional HRV, resting heart rate, stress and training readiness. Daily detail must also work for earlier dates. Show last sync, stale/missing states and gaps; a perceived energy or mood rating remains subjective, never automatically filled from Garmin.
+- Garmin overlays or aligned charts for workouts, late exercise, sleep and available recovery metrics; keep scales and units explicit. Allow selecting Garmin metrics for the same range as energy and mood. Use activity counts as comparison inputs. Add a daily timeline combining manual logs, check-ins and Garmin workouts.
 - Handle edits and deletions with the imported-record override/exclusion rules above. Provide a convenient undo or confirmation for accidental quick logging; display a success acknowledgement only after persistence. Do not require navigation through the configuration flow to log an event.
 - Date range presets: 7, 30 and 90 days, plus custom range. Align charts to the same date range; show missing check-ins as gaps and days without recorded events as zero counts, clearly labelled as logged events rather than proof of no consumption/activity. Imported workout and metric coverage gaps must be distinguished from known zero values.
 - Event history filters by name, category, source and date. Support pagination or bounded queries.
@@ -177,7 +177,7 @@ Provide authenticated, validated historical query interfaces for daily aggregate
 
 MVP: visual comparison and daily aggregation are mandatory. Add a simple quantitative comparison after the core diary is stable (phase 2, included in the overall project but not a prerequisite for initial deployment).
 
-- Compare event counts/quantities on day D against evening score on day D and morning score on day D+1. Also support morning-to-evening change when both scores exist.
+- Compare event counts or quantities on day D against average perceived energy or mood on day D or D+1.
 - Compare days with versus without a selected logged event (e.g. late exercise), showing sample sizes, mean scores and differences.
 - Support the same comparisons for sleep score/duration, actual sleep timing, Body Battery and other numeric daily metrics, using their correctly attributed dates. Sleep bedtime clock-time analysis must handle midnight (e.g. minutes relative to a configurable evening anchor); do not correlate raw clock strings or treat 23:55 and 00:05 as far apart.
 - For numeric comparisons, calculate Pearson correlation using paired observations; optionally add Spearman correlation later. Return unavailable for insufficient samples or constant series. Proposed minimum: 7 paired days for a displayed coefficient, labelled exploratory; warn when fewer than 30 pairs.
@@ -202,7 +202,7 @@ Acceptance scenarios:
 1. Install via custom integration files, restart Home Assistant, configure through UI without an external server.
 2. Configure Coffee and log it three times; today's chart shows three occurrences. Add Red Bull through configuration and log it without code changes or restart. Unknown types are rejected; renaming preserves historical grouping; archiving preserves history and prevents new manual logs.
 3. Log one event with quantity 2; occurrence count is 1 and quantity total is 2. Configured name/alias case and whitespace variants resolve correctly; incompatible units are not summed.
-4. Save morning 80 and evening 45; both appear on the correct date. Add an intermediate score; it does not overwrite either. Missing scores remain gaps.
+4. Save perceived energy 8, mood 5, and a second energy rating of 6. Verify each appears at its own timestamp.
 5. Backdate, edit and delete a record; all affected aggregates update correctly.
 6. Restart/reload and simulate recorder history purge; diary history remains intact. Verify migration and backup/restore procedure.
 7. Import overlapping list/latest Garmin workout fixtures repeatedly; one record per ID, actual source time preserved. Import all distinct recent workouts, not only the newest. Updated source facts update the record without removing user overrides. Excluded/deleted imported workouts stay excluded after resync and can be restored. Missing Garmin data does not block manual logging.

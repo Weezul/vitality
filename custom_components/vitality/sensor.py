@@ -90,16 +90,6 @@ def summary(diary, zone, now):
             week,
         ),
         "workouts_today": ("Garmin workouts today", current["workout_count"], date),
-        "mood_today": (
-            "Latest mood today",
-            current["mood"],
-            date | {"ratings": current["mood_count"]},
-        ),
-        "mood_average_today": (
-            "Average mood today",
-            round(current["mood_average"], 1) if current["mood_count"] else None,
-            date | {"ratings": current["mood_count"]},
-        ),
         "sleep_score_today": (
             "Garmin sleep score today",
             current["metrics"].get("sleep_score", {}).get("value"),
@@ -127,12 +117,23 @@ def summary(diary, zone, now):
             round(mean(values), 1) if values else None,
             week | {"days_with_scores": len(values)},
         )
-    moods = [row["mood_average"] for row in days if row["mood_count"]]
-    result["mood_7_days"] = (
-        "Average mood last 7 days",
-        round(mean(moods), 1) if moods else None,
-        week | {"days_with_ratings": len(moods)},
-    )
+    for kind, label in (("mood", "mood"), ("energy", "perceived energy")):
+        average_key = f"{kind}_average"
+        count_key = f"{kind}_count"
+        attrs = date | {"ratings": current[count_key]}
+        average = current[average_key]
+        result[f"{kind}_today"] = (f"Latest {label} today", current[kind], attrs)
+        result[f"{kind}_average_today"] = (
+            f"Average {label} today",
+            round(average, 1) if average is not None else None,
+            attrs,
+        )
+        values = [row[average_key] for row in days if row[count_key]]
+        result[f"{kind}_7_days"] = (
+            f"Average {label} last 7 days",
+            round(mean(values), 1) if values else None,
+            week | {"days_with_ratings": len(values)},
+        )
     lower, upper = bounds(start, end, zone)
     today_lower, _ = bounds(end, end, zone)
     with diary.session() as db:

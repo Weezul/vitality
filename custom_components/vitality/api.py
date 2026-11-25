@@ -15,8 +15,8 @@ from .queries import (
     export,
     history,
     import_status,
-    mood_readings,
     range_args,
+    rating_readings,
     samples,
 )
 from .validation import Invalid, only
@@ -129,15 +129,19 @@ async def websocket(hass, connection, msg):
                 "timezone": str(runtime.zone),
                 "checkin_scale": [1, 10],
                 "mood": True,
+                "energy": True,
             }
-        elif operation in ("daily", "history", "export", "samples", "analyze", "mood"):
+        elif operation in ("mood", "energy"):
+            result = await runtime.run(
+                rating_readings, runtime.diary, runtime.zone, data, operation
+            )
+        elif operation in ("daily", "history", "export", "samples", "analyze"):
             query = {
                 "daily": daily,
                 "history": history,
                 "export": export,
                 "samples": samples,
                 "analyze": analyze,
-                "mood": mood_readings,
             }[operation]
             result = await runtime.run(query, runtime.diary, runtime.zone, data)
         elif operation == "garmin":

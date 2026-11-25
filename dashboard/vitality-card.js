@@ -1,5 +1,5 @@
 const tag = "vitality-card";
-const kinds = { morning: "Morning", evening: "Evening", other: "Other", mood: "Mood" };
+const kinds = { energy: "Perceived Energy", mood: "Mood", morning: "Morning", evening: "Evening", other: "Other" };
 
 function element(name, text, attrs = {}) {
   const node = document.createElement(name);
@@ -68,7 +68,7 @@ function svgElement(name, attributes = {}) {
   return node;
 }
 
-function chart(title, labels, series, { min = 0, max, bars = false, timestamps, gap, extent } = {}) {
+function chart(title, labels, series, { min = 0, max, bars = false, timestamps, gap, extent, extentLabel } = {}) {
   const container = element("section");
   container.append(element("h3", title));
   if (!series.some(({ values }) => values.some((value) => value != null))) {
@@ -77,10 +77,10 @@ function chart(title, labels, series, { min = 0, max, bars = false, timestamps, 
   max ??= Math.max(min + 1, ...series.flatMap(({ values }) => values.filter((value) => value != null)));
   const svg = svgElement("svg", { viewBox: "0 0 600 168", role: "img", "aria-label": title });
   const count = Math.max(1, labels.length);
-  const x = (i) => {
-    if (timestamps?.length) {
-      const [first, last] = extent || [timestamps[0], timestamps.at(-1)];
-      return 52 + 520 * (timestamps[i] - first) / Math.max(1, last - first);
+  const x = (i, times = timestamps) => {
+    if (times?.length) {
+      const [first, last] = extent || [times[0], times.at(-1)];
+      return 52 + 520 * (times[i] - first) / Math.max(1, last - first);
     }
     return 48 + (i + 0.5) * 536 / count;
   };
@@ -96,6 +96,14 @@ function chart(title, labels, series, { min = 0, max, bars = false, timestamps, 
     const label = svgElement("text", { x: Math.max(55, Math.min(553, x(i))), y: 157, "text-anchor": "middle" });
     label.textContent = labels[i];
     svg.append(label);
+  }
+  if (extentLabel) {
+    for (const [index, time] of [extent[0], (extent[0] + extent[1]) / 2, extent[1]].entries()) {
+      const label = svgElement("text", { x: [52, 312, 572][index], y: 157,
+        "text-anchor": ["start", "middle", "end"][index] });
+      label.textContent = extentLabel(time);
+      svg.append(label);
+    }
   }
   const legend = element("ul", null, { class: "legend" });
   for (const [index, line] of series.entries()) {
@@ -113,16 +121,17 @@ function chart(title, labels, series, { min = 0, max, bars = false, timestamps, 
         svg.append(add(rect, tooltip));
       }
     } else {
-      for (const segment of paths(line.values, x, y, timestamps, gap)) {
+      const pointX = (i) => x(i, line.timestamps);
+      for (const segment of paths(line.values, pointX, y, line.timestamps ?? timestamps, gap)) {
         svg.append(svgElement("polyline", { points: segment.map((point) => point.join(",")).join(" "),
           class: `trace ${className}` }));
       }
       for (const [i, value] of line.values.entries()) {
         if (value == null) continue;
-        const marker = index === 0 ? svgElement("circle", { cx: x(i), cy: y(value), r: 3, class: className })
-          : svgElement("rect", { x: x(i) - 3, y: y(value) - 3, width: 6, height: 6, class: className });
+        const marker = index === 0 ? svgElement("circle", { cx: pointX(i), cy: y(value), r: 3, class: className })
+          : svgElement("rect", { x: pointX(i) - 3, y: y(value) - 3, width: 6, height: 6, class: className });
         const tooltip = svgElement("title");
-        tooltip.textContent = `${labels[i]} · ${line.name}: ${value}`;
+        tooltip.textContent = `${(line.labels ?? labels)[i]} · ${line.name}: ${value}`;
         svg.append(add(marker, tooltip));
       }
     }
@@ -240,8 +249,8 @@ class VitalityCard extends HTMLElement {
     this.booted = true;
     try {
       const info = await this.call("info");
-      if (info.checkin_scale?.join(",") !== "1,10" || !info.mood) {
-        throw new Error("Update the Vitality integration files on Home Assistant and restart to use 1–10 energy and mood.");
+      if (info.checkin_scale?.join(",") !== "1,10" || !info.energy) {
+        throw new Error("Update the Vitality integration files on Home Assistant and restart to use Perceived Energy and Mood.");
       }
       this.zone = info.timezone;
       this.today = calendarDay(this.zone);
@@ -274,21 +283,22 @@ class VitalityCard extends HTMLElement {
     );
     const detailRange = { start: this.detail, end: this.detail };
     if (this.mode === "stats" && this.period === "day") {
-      const [types, timeline, garmin, rows, battery, mood] = await Promise.all([
+      const [types, timeline, garmin, rows, battery, mood, energy] = await Promise.all([
         this.call("types"),
         this.call("history", { ...detailRange, limit: 100, offset: this.timelineOffset || 0 }),
         this.call("garmin"),
         this.call("daily", detailRange),
         this.call("samples", { ...detailRange, metric: this.sampleKey || "body_battery" }),
         this.call("mood", detailRange),
+        this.call("energy", detailRange),
       ]);
       if (token !== this.queryVersion) return;
-      Object.assign(this, { types, timeline, garmin, dayRow: rows[0], battery, mood, ready: true });
+      Object.assign(this, { types, timeline, garmin, dayRow: rows[0], battery, mood, energy, ready: true });
       this.render();
       return;
     }
     const legacy = this.mode === "legacy";
-    const [types, days, history, todayRows, timeline, garmin, dayRows, battery, analysis, mood] = await Promise.all([
+    const [types, days, history, todayRows, timeline, garmin, dayRows, battery, analysis, mood, energy, rangeMood, rangeEnergy] = await Promise.all([
       this.call("types"),
       this.call("daily", { ...this.range, ...selected }),
       this.call("history", { ...this.range, ...this.filters, offset: this.offset || 0 }),
@@ -299,9 +309,12 @@ class VitalityCard extends HTMLElement {
       legacy ? this.call("samples", { ...detailRange, metric: this.sampleKey || "body_battery" }) : null,
       this.analysisSettings ? this.call("analyze", { ...this.range, ...selected, ...this.analysisSettings }) : null,
       legacy ? this.call("mood", detailRange) : null,
+      legacy ? this.call("energy", detailRange) : null,
+      this.call("mood", this.range),
+      this.call("energy", this.range),
     ]);
     if (token !== this.queryVersion) return;
-    Object.assign(this, { types, days, history, todayRow: todayRows[0], timeline, garmin, dayRow: dayRows[0], battery, analysis, mood });
+    Object.assign(this, { types, days, history, todayRow: todayRows[0], timeline, garmin, dayRow: dayRows[0], battery, analysis, mood, energy, rangeMood, rangeEnergy });
     this.ready = true;
     this.render();
   }
@@ -358,13 +371,11 @@ class VitalityCard extends HTMLElement {
   }
 
   recordForm(source, record) {
-    const mood = source === "mood";
-    const checkin = mood || source === "checkin";
+    const rating = source === "mood" || source === "energy";
+    const checkin = rating || source === "checkin";
     const fields = checkin ? [
-      ...(!mood ? [field("Check-in", select("kind", Object.entries(kinds)
-        .filter(([kind]) => kind !== "mood" || record || this.mode === "legacy"),
-      record?.kind))] : []),
-      field(mood ? "Mood (1–10)" : "Score (1–10)", input("score", record?.score, "number", { min: 1, max: 10, step: 1, required: "" })),
+      ...(!rating ? [field("Check-in", select("kind", Object.entries(kinds), record?.kind))] : []),
+      field(rating ? `${kinds[source]} (1–10)` : "Score (1–10)", input("score", record?.score, "number", { min: 1, max: 10, step: 1, required: "" })),
     ] : [
       field("Activity", select("activity_type", this.typesOptions(Boolean(record)), record?.activity_type_id)),
       field("Quantity", input("quantity", record?.quantity ?? 1, "number", { min: 0, step: "any", required: "" })),
@@ -375,13 +386,13 @@ class VitalityCard extends HTMLElement {
       input("occurred_at", record?.occurred_at, "text", { placeholder: "2026-11-24T08:00:00+01:00" })));
     fields.push(field("Notes", input("notes", record?.notes, "text", { maxlength: 2000 })));
     if (this.mode === "log" && !record) {
-      const optional = fields.splice(mood ? 1 : 2);
+      const optional = fields.splice(rating ? 1 : 2);
       fields.push(add(element("details"), element("summary", "Optional details"),
         add(element("div", null, { class: "row" }), ...optional)));
     }
     const form = this.form(fields, (data) => this.action(async () => {
       if (checkin) data.score = Number(data.score);
-      if (mood) data.kind = "mood";
+      if (rating) data.kind = source;
       if (!checkin) {
         data.quantity = Number(data.quantity);
         data.duration_minutes = data.duration_minutes ? Number(data.duration_minutes) : null;
@@ -392,8 +403,8 @@ class VitalityCard extends HTMLElement {
       const result = await this.call(`${record ? "update" : "log"}_${table}`, record ? { ...data, id: record.id } : data);
       this.editing = null;
       if (!record) this.undo = { table, id: result.id };
-    }, record ? "Changes saved." : "Saved."), record || this.mode === "legacy"
-      ? "Save" : mood ? "Save mood" : checkin ? "Save check-in" : "Log activity");
+    }, record ? "Changes saved." : "Saved."), record ? "Save"
+      : rating ? `Save ${kinds[source].toLowerCase()}` : "Log activity");
     form.classList.add("record-form");
     return form;
   }
@@ -428,18 +439,6 @@ class VitalityCard extends HTMLElement {
     return details;
   }
 
-  logControls() {
-    const row = this.todayRow;
-    const panel = add(element("section"), element("h3", "Today"),
-      element("p", `Morning ${row?.morning ?? "—"} / 10 · Evening ${row?.evening ?? "—"} / 10`),
-      element("h4", "Check in"), this.recordForm("checkin"));
-    const options = this.typesOptions();
-    panel.append(element("h4", "Log an activity"));
-    if (!options.length) return add(panel, element("p", "Add an activity type below to start logging."));
-    panel.append(this.recordForm("manual"));
-    return add(panel, this.quickLog());
-  }
-
   quickLog() {
     const quick = element("div", null, { class: "row", role: "group", "aria-label": "Quick log" });
     const recent = this.types.filter((type) => !type.archived)
@@ -453,8 +452,8 @@ class VitalityCard extends HTMLElement {
 
   scoreBoard(row) {
     return add(element("div", null, { class: "scoreboard" }),
-      ...["Morning", "Evening"].map((label) => add(element("div"),
-        element("span", label), element("strong", row?.[label.toLowerCase()] ?? "—"))));
+      ...["energy", "mood"].map((kind) => add(element("div"),
+        element("span", `Latest ${kinds[kind].toLowerCase()}`), element("strong", row?.[kind] ?? "—"))));
   }
 
   loggingPanel() {
@@ -462,7 +461,7 @@ class VitalityCard extends HTMLElement {
     return add(element("div"),
       ...(options.length ? [add(element("section"), element("h3", "Quick log"), this.quickLog())] : []),
       add(element("div", null, { class: "columns" }),
-        add(element("section"), element("h3", "Energy check-in"), this.recordForm("checkin")),
+        add(element("section"), element("h3", "Perceived Energy"), this.recordForm("energy")),
         add(element("section"), element("h3", "Rate mood"), this.recordForm("mood")),
         add(element("section"), element("h3", "Log an activity"), options.length
           ? this.recordForm("manual") : element("p", "Create an activity type in Vitality settings to start logging."))));
@@ -561,33 +560,9 @@ class VitalityCard extends HTMLElement {
   }
 
   charts() {
-    const panel = add(element("div"), this.dateControls());
+    const panel = add(element("div"), this.dateControls(),
+      this.ratingChart({ energy: this.rangeEnergy, mood: this.rangeMood }, this.range.start === this.range.end));
     const labels = this.days.map(({ date }) => date.slice(5));
-    panel.append(chart("Subjective scores (1–10)", labels, [
-      { name: "Morning", values: this.days.map(({ morning }) => morning) },
-      { name: "Evening", values: this.days.map(({ evening }) => evening) },
-    ], { min: 1, max: 10 }));
-    panel.append(chart("Daily average mood (1–10)", labels, [
-      { name: "Average mood", values: this.days.map(({ mood_average }) =>
-        mood_average == null ? null : Number(mood_average.toFixed(1))) },
-    ], { min: 1, max: 10 }));
-    const units = [...new Set(this.days.flatMap(({ quantities }) => Object.keys(quantities)))].sort();
-    const quantity = this.quantityMode && units.includes(this.quantityUnit);
-    panel.append(this.form([
-      field("Activity series", select("activity", [["", "All manual activities"], ...this.typesOptions(true)], this.seriesType)),
-      field("Category series", select("category", [["", "All categories"], ...this.categories.map((c) => [c, c])], this.seriesCategory)),
-      field("Activity measure", select("measure", [["count", "Occurrence count"], ...units.map((u) => [`unit:${u}`, `Quantity (${u || "no unit"})`])],
-        quantity ? `unit:${this.quantityUnit}` : "count")),
-    ], ({ activity, category, measure }) => this.action(() => {
-      this.seriesType = activity;
-      this.seriesCategory = activity ? "" : category;
-      this.quantityMode = measure !== "count";
-      this.quantityUnit = measure.slice(5);
-    }), "Apply activity series"));
-    const activityName = quantity ? `Quantity (${this.quantityUnit || "no unit"})` : "Occurrences";
-    panel.append(chart("Logged manual activities", labels, [{
-      name: activityName, values: this.days.map((d) => quantity ? (d.quantities[this.quantityUnit] ?? 0) : d.count),
-    }], { bars: true }), element("p", "Zero means no matching logs were recorded.", { class: "note" }));
     return add(panel, this.garminCharts(labels));
   }
 
@@ -641,14 +616,21 @@ class VitalityCard extends HTMLElement {
     const metrics = this.metricOptions();
     const units = [...new Set(this.days.flatMap((day) => Object.keys(day.quantities)))];
     const panel = add(element("div"),
-      element("p", "Manual comparisons use the activity series filter above. Only complete pairs within the selected range are used."),
+      element("p", "Only complete pairs within the selected range are used."),
+      this.form([
+        field("Activity", select("activity", [["", "All manual activities"], ...this.typesOptions(true)], this.seriesType)),
+        field("Category", select("category", [["", "All categories"], ...this.categories.map((c) => [c, c])], this.seriesCategory)),
+      ], ({ activity, category }) => this.action(() => {
+        this.seriesType = activity;
+        this.seriesCategory = activity ? "" : category;
+      }), "Apply activity filter"),
       this.form([
         field("Predictor", select("predictor", [["count", "Logged occurrence count"],
           ...units.map((unit) => [`quantity:${unit}`, `Logged quantity (${unit || "no unit"})`]),
           ["workout_count", "Imported workouts"], ["late_workouts", "Late workouts"],
           ...[...metrics].map(([key, value]) => [`metric:${key}`, this.metricLabel(key, value)])], this.analysisChoice || "count")),
-        field("Outcome", select("outcome", [["evening", "Same-day evening score"],
-          ["next_morning", "Next-day morning score"], ["change", "Same-day evening minus morning"],
+        field("Outcome", select("outcome", [["energy", "Same-day average perceived energy"],
+          ["next_energy", "Next-day average perceived energy"],
           ["mood", "Same-day average mood"], ["next_mood", "Next-day average mood"]],
         this.analysisSettings?.outcome)),
         field("Optional group threshold", input("threshold", this.analysisSettings?.threshold, "number", { step: "any" })),
@@ -766,22 +748,31 @@ class VitalityCard extends HTMLElement {
     ], ({ date }) => this.action(() => { this.detail = date; this.timelineOffset = 0; }), "Show day"),
     ...(this.mode === "stats" ? [this.scoreBoard(this.dayRow)] : []),
     ...(this.mode === "stats" || this.detail !== this.today ? [this.overview(this.dayRow, "Garmin overview for this day")] : []),
-    this.moodChart(),
+    this.ratingChart({ energy: this.energy, mood: this.mood }, true),
     this.batteryChart(),
     this.records(this.timeline.records, "timeline"), this.pager(this.timelineOffset, this.timeline.next,
       (offset) => this.action(() => { this.timelineOffset = offset; }), 100));
     return panel;
   }
 
-  moodChart() {
-    const { readings, bounds, truncated } = this.mood;
-    const view = chart("Mood throughout the day (1–10)",
-      readings.map(({ occurred_at }) => this.clockTime(occurred_at)),
-      [{ name: "Mood", values: readings.map(({ score }) => score) }], {
-        min: 1, max: 10, timestamps: readings.map(({ occurred_at }) => Date.parse(occurred_at)),
-        extent: bounds.map(Date.parse),
-      });
-    if (truncated) view.append(element("p", "Chart shows the first 1,500 ratings. Use CSV for the full day."));
+  ratingChart(ratings, singleDay) {
+    const extent = ratings.energy.bounds.map(Date.parse);
+    const formatter = new Intl.DateTimeFormat(undefined, singleDay
+      ? { timeZone: this.zone, hour: "2-digit", minute: "2-digit" }
+      : { timeZone: this.zone, month: "short", day: "numeric" });
+    const series = Object.entries(ratings).map(([kind, { readings }]) => ({
+      name: kinds[kind],
+      labels: readings.map(({ occurred_at }) => this.labelTime(occurred_at)),
+      values: readings.map(({ score }) => score),
+      timestamps: readings.map(({ occurred_at }) => Date.parse(occurred_at)),
+    }));
+    const view = chart("Perceived Energy and Mood (1–10)", [], series, {
+      min: 1, max: 10, extent,
+      extentLabel: (time) => formatter.format(!singleDay && time === extent[1] ? time - 1 : time),
+    });
+    if (Object.values(ratings).some(({ truncated }) => truncated)) {
+      view.append(element("p", "Chart shows up to 1,500 ratings per series. Use CSV for the full range."));
+    }
     return view;
   }
 
@@ -908,7 +899,7 @@ class VitalityCard extends HTMLElement {
     }));
     if (!this.days && this.error) card.append(button("Retry", () => this.boot()));
     if (this.days) card.append(button("Refresh", () => this.action(() => this.advanceToday())),
-      this.logControls(), this.overview(this.todayRow, "Today's Garmin overview"), this.detailPanel(), this.charts(), this.historyPanel(),
+      this.loggingPanel(), this.overview(this.todayRow, "Today's Garmin overview"), this.detailPanel(), this.charts(), this.historyPanel(),
       this.collapsible("analytics", "Exploratory comparisons", this.analyticsPanel()),
       this.collapsible("types", "Manage activity types", this.typeEditor()),
       this.collapsible("garmin", "Configure Garmin", this.garminEditor()),

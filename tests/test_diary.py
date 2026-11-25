@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from custom_components.vitality.queries import daily, export, history, mood_readings
+from custom_components.vitality.queries import daily, export, history, rating_readings
 from custom_components.vitality.storage import MIGRATIONS, Diary
 from custom_components.vitality.validation import Invalid, bounds
 
@@ -79,11 +79,35 @@ def test_mood_readings_keep_each_rating_and_use_local_day(diary, zone):
         diary.save_record(
             "checkins", {"kind": "mood", "score": score, "occurred_at": stamp}
         )
-    ratings = mood_readings(diary, zone, DAY)["readings"]
+    ratings = rating_readings(diary, zone, DAY, "mood")["readings"]
     assert [row["score"] for row in ratings] == [3, 8]
     row = daily(diary, zone, DAY)[0]
     assert (row["mood"], row["mood_average"], row["mood_count"]) == (8, 5.5, 2)
     assert [row["score"] for row in history(diary, zone, DAY)["records"]] == [8, 3]
+
+
+def test_energy_includes_legacy_and_multiple_new_ratings(diary, zone):
+    for kind, day, hour, score in (
+        ("morning", 24, 8, 3),
+        ("energy", 24, 11, 8),
+        ("mood", 24, 12, 5),
+        ("energy", 24, 15, 6),
+        ("evening", 24, 17, 7),
+        ("energy", 25, 10, 9),
+    ):
+        diary.save_record(
+            "checkins",
+            {
+                "kind": kind,
+                "score": score,
+                "occurred_at": f"2026-11-{day}T{hour:02}:00:00+01:00",
+            },
+        )
+    ratings = rating_readings(diary, zone, {**DAY, "end": "2026-11-25"}, "energy")
+    assert [row["score"] for row in ratings["readings"]] == [3, 8, 6, 7, 9]
+    row = daily(diary, zone, DAY)[0]
+    assert (row["energy"], row["energy_average"], row["energy_count"]) == (7, 6, 4)
+    assert (row["morning"], row["evening"], row["mood"]) == (3, 7, 5)
 
 
 @pytest.mark.parametrize(("date", "hours"), [("2026-03-29", 23), ("2026-10-25", 25)])

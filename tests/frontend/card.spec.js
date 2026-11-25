@@ -40,7 +40,7 @@ async function mount(page, type = "vitality-card", config = {}) {
       async callWS({ operation, data }) {
         window.calls.push([operation, data]);
         if (operation === "info") return { timezone: "Europe/Zurich",
-          ...(config.fixtureLegacy ? {} : { checkin_scale: [1, 10], mood: true }) };
+          ...(config.fixtureLegacy ? {} : { checkin_scale: [1, 10], mood: true, energy: true }) };
         if (operation === "types") return types;
         if (operation === "garmin") return {
           workflows: {}, workouts: { late_types: [], type_map: {}, sleep_anchor: "18:00" },
@@ -49,8 +49,13 @@ async function mount(page, type = "vitality-card", config = {}) {
         };
         if (operation === "samples") return { samples: [{ value: 70, value_type: "numeric", unit: "%", observed_at: time }],
           bounds: [today + "T00:00:00Z", shiftDay(today, 1) + "T00:00:00Z"], truncated: false };
-        if (operation === "mood") return { readings: [{ score: 5, occurred_at: time }, { score: 9, occurred_at: today + "T18:00:00Z" }],
-          bounds: [today + "T00:00:00Z", shiftDay(today, 1) + "T00:00:00Z"], truncated: false };
+        if (operation === "mood" || operation === "energy") {
+          const hours = operation === "energy" ? ["10", "16"] : ["12", "18"];
+          return {
+            readings: hours.map((hour, i) => ({ score: 5 + i, occurred_at: today + "T" + hour + ":00:00Z" })),
+            bounds: [data.start + "T00:00:00Z", shiftDay(data.end, 1) + "T00:00:00Z"], truncated: false,
+          };
+        }
         if (operation === "daily") {
           const results = [];
           for (let day = data.start; day <= data.end; day = shiftDay(day, 1)) {
@@ -58,7 +63,7 @@ async function mount(page, type = "vitality-card", config = {}) {
             results.push({ date: day, morning: current ? records.find((r) => r.kind === "morning")?.score : null,
               evening: current ? 5 : null, count: current ? records.filter((r) => r.source === "manual").length : 0,
               quantities: {}, workout_count: current ? 1 : null, late_workouts: current ? 1 : null,
-              mood_average: current ? 7 : null, metrics: current ? metrics : {} });
+              energy_average: current ? 8 : null, mood_average: current ? 7 : null, metrics: current ? metrics : {} });
           }
           return results;
         }
@@ -83,7 +88,7 @@ async function mount(page, type = "vitality-card", config = {}) {
   }, { type, config });
   if (type === "vitality-card") {
     await expect(page.getByRole("heading", { name: "Vitality diary" })).toBeVisible();
-    await expect(page.getByText("Morning 8 / 10 · Evening 5 / 10")).toBeVisible();
+    await expect(page.getByLabel("Perceived Energy (1–10)")).toBeVisible();
   }
 }
 
@@ -96,17 +101,17 @@ for (const width of [360, 1280]) {
       document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
 
     await mount(page, "vitality-log-card");
-    await expect(page.getByRole("button", { name: "Save check-in" })).toBeVisible();
-    await expect(page.getByLabel("Score (1–10)")).toHaveAttribute("min", "1");
-    await expect(page.getByLabel("Score (1–10)")).toHaveAttribute("max", "10");
+    await expect(page.getByRole("button", { name: "Save perceived energy" })).toBeVisible();
+    await expect(page.getByLabel("Perceived Energy (1–10)")).toHaveAttribute("min", "1");
+    await expect(page.getByLabel("Perceived Energy (1–10)")).toHaveAttribute("max", "10");
     await expect(page.getByText("Manage activity types")).toHaveCount(0);
     const columns = await page.locator(".columns").evaluate((node) =>
       getComputedStyle(node).gridTemplateColumns.split(" ").length);
     expect(columns).toBe(width === 360 ? 1 : 3);
-    await page.getByLabel("Score (1–10)").fill("10");
-    await page.getByRole("button", { name: "Save check-in" }).click();
+    await page.getByLabel("Perceived Energy (1–10)").fill("10");
+    await page.getByRole("button", { name: "Save perceived energy" }).click();
     await expect(page.getByRole("status")).toHaveText("Saved.");
-    expect(await page.evaluate(() => window.calls.find(([name]) => name === "log_checkin")[1].score)).toBe(10);
+    expect(await page.evaluate(() => window.calls.find(([name]) => name === "log_checkin")[1])).toMatchObject({ kind: "energy", score: 10 });
     await page.getByLabel("Mood (1–10)").fill("7");
     await page.getByRole("button", { name: "Save mood" }).click();
     await expect.poll(() => page.evaluate(() => window.calls.filter(([name]) =>
@@ -119,14 +124,16 @@ for (const width of [360, 1280]) {
     await expect(page.getByRole("heading", { name: "Daily timeline" })).toBeVisible();
     await expect(page.getByText("Morning · 8/10")).toBeVisible();
     await expect(page.getByRole("img", { name: "Body Battery (%) · intraday" })).toBeVisible();
-    await expect(page.getByRole("img", { name: "Mood throughout the day (1–10)" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Save check-in" })).toHaveCount(0);
+    await expect(page.getByRole("img", { name: "Perceived Energy and Mood (1–10)" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Save perceived energy" })).toHaveCount(0);
     await fits();
 
     await mount(page, "vitality-stats-card", { period: "week" });
     await expect(page.getByRole("button", { name: "7 days" })).toHaveAttribute("aria-pressed", "true");
-    await expect(page.getByRole("img", { name: "Subjective scores (1–10)" })).toBeVisible();
-    await expect(page.getByRole("img", { name: "Daily average mood (1–10)" })).toBeVisible();
+    const ratings = page.getByRole("img", { name: "Perceived Energy and Mood (1–10)" });
+    await expect(ratings).toBeVisible();
+    await expect(ratings.locator("polyline")).toHaveCount(2);
+    await expect(page.getByRole("heading", { name: "Logged manual activities" })).toHaveCount(0);
     const oneDay = page.getByRole("button", { name: "1 day", exact: true });
     await oneDay.click();
     await expect(oneDay).toHaveAttribute("aria-pressed", "true");
@@ -134,6 +141,9 @@ for (const width of [360, 1280]) {
       name === "daily" || name === "history").slice(-2).map(([, { start, end }]) => [start, end]));
     expect(dates[0][0]).toBe(dates[0][1]);
     expect(dates[1]).toEqual(dates[0]);
+    const ratingDates = await page.evaluate(() => window.calls.filter(([name]) =>
+      name === "energy" || name === "mood").slice(-2).map(([, { start, end }]) => [start, end]));
+    expect(ratingDates).toEqual(dates);
     await page.getByText("History", { exact: true }).click();
     await expect(page.getByText("Morning · 8/10", { exact: true })).toBeVisible();
     await expect(page.getByText("Mood · 7/10", { exact: true })).toBeVisible();
@@ -158,7 +168,7 @@ for (const width of [360, 1280]) {
 test("new logging card identifies an outdated Home Assistant installation", async ({ page }) => {
   await mount(page, "vitality-log-card", { fixtureLegacy: true });
   await expect(page.getByRole("status")).toContainText("Update the Vitality integration files");
-  await expect(page.getByRole("button", { name: "Save check-in" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Save perceived energy" })).toHaveCount(0);
 });
 
 test("mobile charts, date presets, Garmin detail and text escaping", async ({ page }) => {
@@ -198,7 +208,7 @@ test("catalogue, quick log undo, persisted edit, analysis and CSV", async ({ pag
   const editor = page.getByRole("article").filter({ hasText: "Morning · 8/10" }).first();
   await editor.getByLabel("Score (1–10)").fill("9");
   await editor.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByText("Morning 9 / 10 · Evening 5 / 10")).toBeVisible();
+  await expect(page.getByText("Morning · 9/10").first()).toBeVisible();
   await page.getByText("Exploratory comparisons", { exact: true }).click();
   await page.getByRole("button", { name: "Compare", exact: true }).click();
   await expect(page.getByText(/Exploratory Pearson r = 0.45/)).toBeVisible();

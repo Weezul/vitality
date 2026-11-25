@@ -83,6 +83,17 @@ MIGRATIONS = (
         "DROP TABLE checkins_before_mood",
         "CREATE INDEX checkins_time ON checkins(occurred_at, id)",
     ),
+    (
+        "ALTER TABLE checkins RENAME TO checkins_before_energy",
+        """CREATE TABLE checkins (
+            id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN ('morning','evening','other','mood','energy')),
+            score INTEGER NOT NULL CHECK(score BETWEEN 1 AND 10), occurred_at TEXT NOT NULL,
+            notes TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        )""",
+        "INSERT INTO checkins SELECT * FROM checkins_before_energy",
+        "DROP TABLE checkins_before_energy",
+        "CREATE INDEX checkins_time ON checkins(occurred_at, id)",
+    ),
 )
 
 

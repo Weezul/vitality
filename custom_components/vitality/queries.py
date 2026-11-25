@@ -60,6 +60,9 @@ def daily(diary, zone, data):
             "mood": None,
             "mood_average": None,
             "mood_count": 0,
+            "energy": None,
+            "energy_average": None,
+            "energy_count": 0,
             "count": 0,
             "quantities": {},
             "metrics": {},
@@ -73,21 +76,30 @@ def daily(diary, zone, data):
             "diary_date", 1, lambda value: local(value, zone).date().isoformat()
         )
         for row in db.execute(
-            """SELECT local_day, kind, score, average, observations FROM (
-              SELECT diary_date(occurred_at) AS local_day, kind, score,
+            """WITH timed AS (
+                SELECT diary_date(occurred_at) AS local_day, kind, score, occurred_at, created_at, id
+                FROM checkins WHERE occurred_at>=? AND occurred_at<?
+              ), ratings AS (
+                SELECT * FROM timed
+                UNION ALL
+                SELECT local_day, 'energy', score, occurred_at, created_at, id
+                FROM timed WHERE kind IN ('morning','evening')
+              )
+              SELECT local_day, kind, score, average, observations FROM (
+              SELECT local_day, kind, score,
                 avg(score) OVER by_kind AS average, count(*) OVER by_kind AS observations,
                 row_number() OVER (
-                PARTITION BY diary_date(occurred_at), kind ORDER BY occurred_at DESC, created_at DESC, id DESC
-              ) AS rank FROM checkins WHERE occurred_at>=? AND occurred_at<?
-                WINDOW by_kind AS (PARTITION BY diary_date(occurred_at), kind)
+                PARTITION BY local_day, kind ORDER BY occurred_at DESC, created_at DESC, id DESC
+              ) AS rank FROM ratings
+                WINDOW by_kind AS (PARTITION BY local_day, kind)
             ) WHERE rank=1""",
             (lower, upper),
         ):
             item = result[row["local_day"]]
             item[row["kind"]] = row["score"]
-            if row["kind"] == "mood":
-                item["mood_average"] = row["average"]
-                item["mood_count"] = row["observations"]
+            if row["kind"] in ("energy", "mood"):
+                item[f"{row['kind']}_average"] = row["average"]
+                item[f"{row['kind']}_count"] = row["observations"]
         for row in db.execute(
             f"""SELECT diary_date(e.occurred_at) AS local_day, e.unit, count(*) AS count, sum(e.quantity) AS total
             FROM events e JOIN activity_types t ON e.activity_type_id=t.id
@@ -292,17 +304,17 @@ def samples(diary, zone, data):
     }
 
 
-def mood_readings(diary, zone, data):
+def rating_readings(diary, zone, data, rating):
     lower, upper = range_args(zone, data)
-    if data["start"] != data["end"]:
-        raise Invalid("Choose one local date for mood readings.")
+    kinds = ("energy", "morning", "evening") if rating == "energy" else ("mood",)
+    placeholders = ", ".join("?" for _ in kinds)
     with diary.session() as db:
         rows = records(
             db.execute(
-                """SELECT score, occurred_at FROM checkins
-               WHERE kind='mood' AND occurred_at>=? AND occurred_at<?
+                f"""SELECT score, occurred_at FROM checkins
+               WHERE kind IN ({placeholders}) AND occurred_at>=? AND occurred_at<?
                ORDER BY occurred_at, created_at, id LIMIT 1501""",
-                (lower, upper),
+                (*kinds, lower, upper),
             )
         )
     return {
