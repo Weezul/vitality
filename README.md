@@ -9,7 +9,7 @@ The target is Home Assistant Core **2026.11.3**. Use an administrator account. T
 1. Copy the repository’s entire `custom_components/vitality/` directory into `/config/custom_components/vitality/` on Home Assistant, using your existing configuration file access. Keep its subdirectories. Restart Home Assistant.
 2. Go to **Settings → Devices & services → Add integration**, search for **Vitality**, and finish the setup. Leave the sensor options off if diary statistics should stay visible only to administrators.
 3. Copy `dashboard/vitality-card.js` to `/config/www/vitality-card.js`, creating `www` if needed. Restart if this is the first time you created `www`.
-4. Open **Settings → Dashboards → Resources** and add `/local/vitality-card.js?v=5` as a **JavaScript module**. Enable **Advanced mode** in your HA profile if the Resources menu is hidden.
+4. Open **Settings → Dashboards → Resources** and add `/local/vitality-card.js?v=6` as a **JavaScript module**. Enable **Advanced mode** in your HA profile if the Resources menu is hidden.
 5. Add the cards to the dashboards of your choice using the card picker or manual card YAML below. For a single dashboard with four views, paste `dashboard/vitality-dashboard.yaml` into **Edit dashboard → ⋮ → Raw configuration editor**.
 6. Open **Vitality Settings → Manage activity types**. For example, create `coffee` named **Coffee**, category **Caffeine**, default unit `cup`, alias `espresso`. Stable IDs preserve historical grouping after a rename. Archiving hides the type from new logs and preserves its history.
 
@@ -39,6 +39,16 @@ period: week
 type: custom:vitality-config-card
 ```
 
+In a **Sections** view, Vitality Stats defaults to the full width of its section. If an existing card has a saved width, edit its layout or set the width in its card YAML:
+
+```yaml
+type: custom:vitality-stats-card
+period: week
+grid_options:
+  columns: full
+  rows: auto
+```
+
 ## Use Vitality with built-in cards
 
 Open **Settings → Devices & services → Vitality → Configure** and enable **Expose daily and weekly statistics as Home Assistant sensors**. Find the resulting entities by searching for **Vitality** in the entity picker. Add them to an Entities, Tile, or other compatible card.
@@ -54,7 +64,7 @@ The seven-day window includes today in Home Assistant's timezone. Entities with 
 
 Back up the database before upgrading. Vitality converts saved subjective scores by dividing by 10, rounding to the nearest whole number with halves rounded up, and applying a minimum of 1. For example, 0 becomes 1, 45 becomes 5, and 100 becomes 10. Update automations or scripts that send scores, and replace the existing Assist energy example if you use it. Recorder history for existing latest-score entities can contain earlier 0–100 values.
 
-If a form still asks for a score out of 100, update both the integration directory and the dashboard JavaScript. Restart Home Assistant, edit the existing dashboard resource to use `/local/vitality-card.js?v=5`, and reload the dashboard. For Assist, replace the old morning-energy sentence automation with the supplied perceived-energy version and reload automations.
+If a form still asks for a score out of 100, update both the integration directory and the dashboard JavaScript. Restart Home Assistant, edit the existing dashboard resource to use `/local/vitality-card.js?v=6`, and reload the dashboard. For Assist, replace the old morning-energy sentence automation with the supplied perceived-energy version and reload automations.
 
 ## Log, review and compare
 
@@ -111,7 +121,7 @@ To use the built-in Home Assistant conversation agent, open `dashboard/assist-au
 | Symptom | Check |
 | --- | --- |
 | Vitality is missing from Add integration | Check `/config/custom_components/vitality/manifest.json`, case of the directory name, and HA logs after restarting. |
-| Custom element does not exist | Check the file in `/config/www`, open `/local/vitality-card.js?v=5` as an administrator and check that it serves JavaScript. Confirm the resource uses the JavaScript module type and hard refresh. |
+| Custom element does not exist | Check the file in `/config/www`, open `/local/vitality-card.js?v=6` as an administrator and check that it serves JavaScript. Confirm the resource uses the JavaScript module type and hard refresh. |
 | Administrator required | Sign in as an HA administrator and confirm that the dashboard connection uses that account. |
 | Garmin metric is missing, deferred or stale | Check **Configure Garmin → Source and import status**, verify the value/date/observation mappings and HA entity availability, then resync. Bedtime and sleep score may arrive at different times. |
 | Database error | Check available disk space, HA configuration directory write access and HA logs. If the file came from a newer Vitality version, restore a compatible backup or use the newer version. |

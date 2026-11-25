@@ -121,6 +121,8 @@ for (const width of [360, 1280]) {
     await fits();
 
     await mount(page, "vitality-stats-card", { period: "day" });
+    expect(await page.locator("vitality-stats-card").evaluate((card) => card.getGridOptions()))
+      .toEqual({ columns: "full", rows: "auto" });
     await expect(page.getByRole("heading", { name: "Daily timeline" })).toBeVisible();
     await expect(page.getByText("Morning · 8/10")).toBeVisible();
     await expect(page.getByRole("img", { name: "Body Battery (%) · intraday" })).toBeVisible();

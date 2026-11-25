@@ -241,6 +241,10 @@ class VitalityCard extends HTMLElement {
 
   getCardSize() { return this.mode === "log" ? 6 : 12; }
 
+  getGridOptions() {
+    return this.mode === "stats" ? { columns: "full", rows: "auto" } : {};
+  }
+
   call(operation, data = {}) {
     return this.client.callWS({ type: "vitality/diary", operation, data });
   }
