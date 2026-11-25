@@ -28,6 +28,8 @@ async function mount(page, type = "vitality-card", config = {}) {
       { id: "checkin_1", source: "checkin", kind: "morning", score: 8, occurred_at: time,
         notes: "<img src=x onerror='window.injected=true'>" },
       { id: "checkin_2", source: "checkin", kind: "mood", score: 7, occurred_at: time },
+      { id: "manual_fixture", source: "manual", name: "Coffee", activity_type_id: "coffee",
+        occurred_at: time, quantity: 1, unit: "cup" },
     ];
     window.calls = [];
     const card = document.createElement(type);
@@ -155,6 +157,20 @@ for (const width of [360, 1280]) {
     await page.getByText("History", { exact: true }).click();
     await expect(page.getByText("Morning · 8/10", { exact: true })).toBeVisible();
     await expect(page.getByText("Mood · 7/10", { exact: true })).toBeVisible();
+    const entry = page.getByRole("article").filter({ hasText: "Coffee" });
+    const titleBox = await entry.locator("strong").boundingBox();
+    const timestamp = entry.locator("time");
+    await expect(timestamp).toHaveAttribute("datetime", /T12:00:00Z$/);
+    const timestampBox = await timestamp.boundingBox();
+    const editBox = await entry.getByRole("button", { name: "Edit", exact: true }).boundingBox();
+    const deleteBox = await entry.getByRole("button", { name: "Delete", exact: true }).boundingBox();
+    expect(timestampBox.x).toBeGreaterThan(titleBox.x);
+    expect(editBox.x).toBeGreaterThan(titleBox.x);
+    expect(editBox.y).toBeGreaterThanOrEqual(timestampBox.y + timestampBox.height);
+    expect(Math.abs(timestampBox.x + timestampBox.width - deleteBox.x - deleteBox.width)).toBeLessThan(1);
+    await page.getByRole("button", { name: "Edit workout" }).click();
+    await expect(page.getByLabel("Corrected timestamp (with offset)")).toBeVisible();
+    await page.getByRole("button", { name: "Cancel edit" }).click();
     await page.getByText("Exploratory comparisons").click();
     await page.getByLabel("Outcome").selectOption("next_mood");
     await page.getByRole("button", { name: "Compare", exact: true }).click();

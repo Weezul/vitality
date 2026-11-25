@@ -176,6 +176,14 @@ const css = `
   .note { color:var(--secondary-text-color,#555); }
   .error { color:var(--error-color,#b32121); }
   .record { padding:8px 0; border-bottom:1px solid var(--divider-color,#bbb); overflow-wrap:anywhere; }
+  .record-header { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:start; gap:8px; }
+  .record-info p { margin:4px 0 0; }
+  .record-side { max-width:min(56cqw, 20rem); text-align:right; }
+  .record-side time { display:block; font-size:.85rem; }
+  .record-actions { justify-content:flex-end; gap:4px; margin:4px 0 0; }
+  .record-actions button { padding-inline:8px; }
+  .record-editor:empty { display:none; }
+  .record-editor { margin-top:8px; }
   svg { display:block; width:100%; overflow:visible; }
   svg text { fill:currentColor; font-size:12px; }
   .gridline { stroke:var(--divider-color,#aaa); }
@@ -484,24 +492,30 @@ class VitalityCard extends HTMLElement {
     const list = element("div");
     for (const item of rows) {
       const checkin = item.source === "checkin";
-      const panel = add(element("article", null, { class: "record" }),
+      const content = add(element("div", null, { class: "record-info" }),
         element("strong", checkin ? `${kinds[item.kind]} · ${item.score}/10` : item.name || "Workout"),
-        element("p", `${this.labelTime(item.occurred_at)} · ${item.source}${item.quantity == null ? "" : ` · ${item.quantity} ${item.unit}`}${item.duration_minutes == null ? "" : ` · ${Math.round(item.duration_minutes)} min`}`));
-      if (item.notes) panel.append(element("p", item.notes));
-      if (item.prior_battery) panel.append(element("p",
+        element("p", `${item.source}${item.quantity == null ? "" : ` · ${item.quantity} ${item.unit}`}${item.duration_minutes == null ? "" : ` · ${Math.round(item.duration_minutes)} min`}`, { class: "note" }));
+      const actions = element("div", null, { class: "row record-actions" });
+      const side = add(element("div", null, { class: "record-side" }),
+        element("time", this.labelTime(item.occurred_at), { datetime: item.occurred_at, class: "note" }), actions);
+      const editor = element("div", null, { class: "record-editor" });
+      const panel = add(element("article", null, { class: "record" }),
+        add(element("div", null, { class: "record-header" }), content, side), editor);
+      if (item.notes) content.append(element("p", item.notes));
+      if (item.prior_battery) content.append(element("p",
         `Prior Body Battery: ${item.prior_battery.value}% at ${this.clockTime(item.prior_battery.observed_at)} · ${item.prior_battery.provenance}`,
         { class: "note" }));
-      if (item.source === "garmin") this.workoutControls(panel, item, context);
+      if (item.source === "garmin") this.workoutControls(item, context, content, actions, editor);
       else {
         const table = checkin ? "checkin" : "event";
-        panel.append(add(element("div", null, { class: "row" }),
+        actions.append(
           button("Edit", () => { this.editing = { id: item.id, context }; this.render(); }),
           button("Delete", () => {
             if (confirm("Permanently delete this diary record?")) {
               this.action(() => this.call(`delete_${table}`, { id: item.id }), "Record deleted.");
             }
-          })));
-        if (this.editing?.id === item.id && this.editing.context === context) panel.append(this.recordForm(item.source, item),
+          }));
+        if (this.editing?.id === item.id && this.editing.context === context) editor.append(this.recordForm(item.source, item),
           button("Cancel edit", () => { this.editing = null; this.dirty = false; this.render(); }));
       }
       list.append(panel);
@@ -510,25 +524,25 @@ class VitalityCard extends HTMLElement {
     return list;
   }
 
-  workoutControls(panel, item, context) {
+  workoutControls(item, context, content, actions, editor) {
     const labels = [item.original_type, item.original_name !== item.name ? item.original_name : null,
       item.distance_m != null ? `${Number((item.distance_m / 1000).toFixed(2))} km` : null,
       item.late ? "Late exercise" : null, item.excluded ? "Excluded from totals" : null,
       item.manual_id ? "Linked manual log" : null].filter(Boolean);
-    if (labels.length) panel.append(element("p", labels.join(" · ")));
-    panel.append(add(element("div", null, { class: "row" }),
+    if (labels.length) content.append(element("p", labels.join(" · ")));
+    actions.append(
       button("Edit workout", () => { this.editing = { id: item.id, context }; this.render(); }),
       button(item.excluded ? "Restore to totals" : "Exclude from totals", () => {
         if (item.excluded || confirm("Exclude this workout from totals? You can restore it later.")) {
           this.action(() => this.call("workout_override", { id: item.id, excluded: !item.excluded }),
             item.excluded ? "Workout restored." : "Workout excluded.");
         }
-      })));
+      }));
     if (this.editing?.id !== item.id || this.editing.context !== context) return;
-    const manual = new Map([...this.timeline.records, ...this.history.records].filter((row) => row.source === "manual")
+    const manual = new Map([...(this.timeline?.records ?? []), ...(this.history?.records ?? [])].filter((row) => row.source === "manual")
       .map((row) => [row.id, `${row.name} · ${this.labelTime(row.occurred_at)}`]));
     if (item.manual_id && !manual.has(item.manual_id)) manual.set(item.manual_id, "Previously linked log");
-    panel.append(this.form([
+    editor.append(this.form([
       field("Local note", input("notes", item.notes, "text", { maxlength: 2000 })),
       field("Corrected timestamp (with offset)", input("occurred_at", item.override_at, "text",
         { placeholder: item.occurred_at })),
