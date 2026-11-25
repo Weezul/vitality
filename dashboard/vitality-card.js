@@ -1,5 +1,5 @@
 const tag = "vitality-card";
-const kinds = ["morning", "evening", "other", "mood"];
+const kinds = { morning: "Morning", evening: "Evening", other: "Other", mood: "Mood" };
 
 function element(name, text, attrs = {}) {
   const node = document.createElement(name);
@@ -361,9 +361,9 @@ class VitalityCard extends HTMLElement {
     const mood = source === "mood";
     const checkin = mood || source === "checkin";
     const fields = checkin ? [
-      ...(!mood ? [field("Check-in", select("kind", kinds
-        .filter((kind) => kind !== "mood" || record || this.mode === "legacy")
-        .map((kind) => [kind, kind]), record?.kind))] : []),
+      ...(!mood ? [field("Check-in", select("kind", Object.entries(kinds)
+        .filter(([kind]) => kind !== "mood" || record || this.mode === "legacy"),
+      record?.kind))] : []),
       field(mood ? "Mood (1–10)" : "Score (1–10)", input("score", record?.score, "number", { min: 1, max: 10, step: 1, required: "" })),
     ] : [
       field("Activity", select("activity_type", this.typesOptions(Boolean(record)), record?.activity_type_id)),
@@ -473,7 +473,7 @@ class VitalityCard extends HTMLElement {
     for (const item of rows) {
       const checkin = item.source === "checkin";
       const panel = add(element("article", null, { class: "record" }),
-        element("strong", checkin ? `${item.kind} · ${item.score}/10` : item.name || "Workout"),
+        element("strong", checkin ? `${kinds[item.kind]} · ${item.score}/10` : item.name || "Workout"),
         element("p", `${this.labelTime(item.occurred_at)} · ${item.source}${item.quantity == null ? "" : ` · ${item.quantity} ${item.unit}`}${item.duration_minutes == null ? "" : ` · ${Math.round(item.duration_minutes)} min`}`));
       if (item.notes) panel.append(element("p", item.notes));
       if (item.prior_battery) panel.append(element("p",
@@ -539,8 +539,8 @@ class VitalityCard extends HTMLElement {
   dateControls() {
     const controls = element("section");
     const presets = element("div", null, { class: "row", role: "group", "aria-label": "Date range presets" });
-    for (const n of [7, 30, 90]) {
-      const node = button(`${n} days`, () => this.action(() => {
+    for (const n of [1, 7, 30, 90]) {
+      const node = button(n === 1 ? "1 day" : `${n} days`, () => this.action(() => {
         this.preset = n;
         this.offset = 0;
         this.range = { start: shiftDay(this.today, 1 - n), end: this.today };

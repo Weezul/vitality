@@ -27,6 +27,7 @@ async function mount(page, type = "vitality-card", config = {}) {
         original_type: "running", occurred_at: time, duration_minutes: 37, late: true, distance_m: 5000 },
       { id: "checkin_1", source: "checkin", kind: "morning", score: 8, occurred_at: time,
         notes: "<img src=x onerror='window.injected=true'>" },
+      { id: "checkin_2", source: "checkin", kind: "mood", score: 7, occurred_at: time },
     ];
     window.calls = [];
     const card = document.createElement(type);
@@ -116,7 +117,7 @@ for (const width of [360, 1280]) {
 
     await mount(page, "vitality-stats-card", { period: "day" });
     await expect(page.getByRole("heading", { name: "Daily timeline" })).toBeVisible();
-    await expect(page.getByText("morning · 8/10")).toBeVisible();
+    await expect(page.getByText("Morning · 8/10")).toBeVisible();
     await expect(page.getByRole("img", { name: "Body Battery (%) · intraday" })).toBeVisible();
     await expect(page.getByRole("img", { name: "Mood throughout the day (1–10)" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Save check-in" })).toHaveCount(0);
@@ -126,6 +127,16 @@ for (const width of [360, 1280]) {
     await expect(page.getByRole("button", { name: "7 days" })).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByRole("img", { name: "Subjective scores (1–10)" })).toBeVisible();
     await expect(page.getByRole("img", { name: "Daily average mood (1–10)" })).toBeVisible();
+    const oneDay = page.getByRole("button", { name: "1 day", exact: true });
+    await oneDay.click();
+    await expect(oneDay).toHaveAttribute("aria-pressed", "true");
+    const dates = await page.evaluate(() => window.calls.filter(([name]) =>
+      name === "daily" || name === "history").slice(-2).map(([, { start, end }]) => [start, end]));
+    expect(dates[0][0]).toBe(dates[0][1]);
+    expect(dates[1]).toEqual(dates[0]);
+    await page.getByText("History", { exact: true }).click();
+    await expect(page.getByText("Morning · 8/10", { exact: true })).toBeVisible();
+    await expect(page.getByText("Mood · 7/10", { exact: true })).toBeVisible();
     await page.getByText("Exploratory comparisons").click();
     await page.getByLabel("Outcome").selectOption("next_mood");
     await page.getByRole("button", { name: "Compare", exact: true }).click();
@@ -184,7 +195,7 @@ test("catalogue, quick log undo, persisted edit, analysis and CSV", async ({ pag
   await page.getByRole("button", { name: "Undo last log" }).click();
   await expect(page.getByRole("status")).toHaveText("Log undone.");
   await page.getByRole("button", { name: "Edit", exact: true }).first().click();
-  const editor = page.getByRole("article").filter({ hasText: "morning · 8/10" }).first();
+  const editor = page.getByRole("article").filter({ hasText: "Morning · 8/10" }).first();
   await editor.getByLabel("Score (1–10)").fill("9");
   await editor.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText("Morning 9 / 10 · Evening 5 / 10")).toBeVisible();
