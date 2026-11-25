@@ -11,6 +11,18 @@ DAY = {"start": "2026-11-24", "end": "2026-11-24"}
 STAMP = "2026-11-24T08:00:00+01:00"
 
 
+def test_activity_quick_log_visibility_does_not_affect_logging(diary):
+    coffee = {"id": "coffee", "name": "Coffee"}
+    diary.save_type(coffee)
+    assert diary.types()[0]["show_in_quick_log"] is True
+    diary.save_type({**coffee, "show_in_quick_log": False})
+    diary.save_type({**coffee, "name": "Espresso"})
+    assert diary.types()[0]["show_in_quick_log"] is False
+    assert diary.save_record("events", {"activity_type": "coffee"})
+    with pytest.raises(Invalid, match="Quick Log"):
+        diary.save_type({**coffee, "show_in_quick_log": "false"})
+
+
 def test_types_and_quantities(diary, zone):
     coffee = {"id": "coffee", "name": "Coffee", "aliases": ["Espresso"], "unit": "cup"}
     diary.save_type(coffee)
@@ -131,6 +143,10 @@ def test_migrate_and_restore(tmp_path):
         for sql in MIGRATIONS[0]:
             db.execute(sql)
         db.execute("PRAGMA user_version=1")
+        db.execute(
+            "INSERT INTO activity_types VALUES(?,?,?,?,?,?)",
+            ("coffee", "Coffee", "", "", "[]", 0),
+        )
         db.executemany(
             "INSERT INTO checkins VALUES(?,?,?,?,?,?,?)",
             [
@@ -144,6 +160,7 @@ def test_migrate_and_restore(tmp_path):
             db.backup(backup)
     database = Diary(restored)
     database.initialize()
+    assert database.types()[0]["show_in_quick_log"] is True
     assert database.latest("morning")["score"] == 8
     assert database.latest("evening")["score"] == 5
     assert database.latest("other")["score"] == 1

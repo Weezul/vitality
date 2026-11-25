@@ -94,6 +94,10 @@ MIGRATIONS = (
         "DROP TABLE checkins_before_energy",
         "CREATE INDEX checkins_time ON checkins(occurred_at, id)",
     ),
+    (
+        """ALTER TABLE activity_types ADD COLUMN show_in_quick_log INTEGER NOT NULL
+           DEFAULT 1 CHECK(show_in_quick_log IN (0, 1))""",
+    ),
 )
 
 
@@ -108,6 +112,7 @@ def catalogue(db):
     for row in result:
         row["aliases"] = json.loads(row["aliases"])
         row["archived"] = bool(row["archived"])
+        row["show_in_quick_log"] = bool(row["show_in_quick_log"])
     return result
 
 
@@ -180,13 +185,24 @@ class Diary:
 
     def save_type(self, data):
         only(
-            data, "id", "name", "category", "unit", "aliases", "archived", "create_only"
+            data,
+            "id",
+            "name",
+            "category",
+            "unit",
+            "aliases",
+            "archived",
+            "create_only",
+            "show_in_quick_log",
         )
         name = text(data.get("name"), required=True)
         type_id = key(data.get("id"))
         aliases = data.get("aliases", [])
         archived = data.get("archived", False)
         create_only = data.get("create_only", False)
+        show_in_quick_log = data.get("show_in_quick_log")
+        if "show_in_quick_log" in data and not isinstance(show_in_quick_log, bool):
+            raise Invalid("Choose whether to show the activity in Quick Log.")
         if (
             not isinstance(aliases, list)
             or len(aliases) > 20
@@ -223,10 +239,13 @@ class Diary:
                         "The ID, name or alias already identifies another activity."
                     )
             db.execute(
-                """INSERT INTO activity_types VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
+                """INSERT INTO activity_types
+                (id,name,category,unit,aliases,archived,show_in_quick_log)
+                VALUES(?,?,?,?,?,?,coalesce(?,1)) ON CONFLICT(id) DO UPDATE SET
                 name=excluded.name, category=excluded.category, unit=excluded.unit,
-                aliases=excluded.aliases, archived=excluded.archived""",
-                row,
+                aliases=excluded.aliases, archived=excluded.archived,
+                show_in_quick_log=coalesce(?,activity_types.show_in_quick_log)""",
+                (*row, show_in_quick_log, show_in_quick_log),
             )
         return type_id
 

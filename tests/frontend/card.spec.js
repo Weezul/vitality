@@ -76,7 +76,12 @@ async function mount(page, type = "vitality-card", config = {}) {
         if (operation === "delete_event") records = records.filter((row) => row.id !== data.id);
         if (operation === "log_checkin") return { id: "new_checkin" };
         if (operation === "update_checkin") records = records.map((row) => row.id === data.id ? { ...row, ...data } : row);
-        if (operation === "save_type") { types.push(data); return data.id; }
+        if (operation === "save_type") {
+          const index = types.findIndex(({ id }) => id === data.id);
+          if (index < 0) types.push(data);
+          else types[index] = data;
+          return data.id;
+        }
         if (operation === "analyze") return { start: data.start, end: data.end, outcome: "Evening score on day D",
           n: 8, r: 0.45, warning: true };
         if (operation === "export") return { csv: "id\r\ncheckin_1\r\n", next: null };
@@ -207,6 +212,14 @@ test("catalogue, quick log undo, persisted edit, analysis and CSV", async ({ pag
   await expect(page.getByRole("status")).toHaveText("Logged Coffee.");
   await page.getByRole("button", { name: "Undo last log" }).click();
   await expect(page.getByRole("status")).toHaveText("Log undone.");
+  await page.getByLabel("Activity to edit").selectOption("coffee");
+  await page.getByLabel("Show in Quick Log").selectOption("false");
+  await page.getByRole("button", { name: "Save", exact: true }).last().click();
+  await expect(page.getByRole("button", { name: "+ Coffee" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "+ Red Bull" })).toBeVisible();
+  const manualActivity = page.getByRole("combobox", { name: "Activity", exact: true });
+  await manualActivity.selectOption("coffee");
+  await expect(manualActivity).toHaveValue("coffee");
   await page.getByRole("button", { name: "Edit", exact: true }).first().click();
   const editor = page.getByRole("article").filter({ hasText: "Morning · 8/10" }).first();
   await editor.getByLabel("Score (1–10)").fill("9");

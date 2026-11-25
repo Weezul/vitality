@@ -429,10 +429,13 @@ class VitalityCard extends HTMLElement {
       field("Category", input("category", target?.category, "text", { maxlength: 120 })),
       field("Default unit", input("unit", target?.unit, "text", { maxlength: 32 })),
       field("Aliases, comma separated", input("aliases", target?.aliases.join(", "))),
+      field("Show in Quick Log", select("show_in_quick_log", [["true", "Yes"], ["false", "No"]],
+        String(target?.show_in_quick_log !== false))),
       field("Archived", select("archived", [["false", "No"], ["true", "Yes"]], String(Boolean(target?.archived)))),
     ], (data) => this.action(async () => {
       data.aliases = data.aliases.split(",").map((value) => value.trim()).filter(Boolean);
       data.archived = data.archived === "true";
+      data.show_in_quick_log = data.show_in_quick_log === "true";
       data.create_only = !target;
       this.editType = await this.call("save_type", data);
     }, "Activity type saved.")));
@@ -450,13 +453,13 @@ class VitalityCard extends HTMLElement {
 
   quickLog() {
     const quick = element("div", null, { class: "row", role: "group", "aria-label": "Quick log" });
-    const recent = this.types.filter((type) => !type.archived)
+    const recent = this.types.filter((type) => !type.archived && type.show_in_quick_log !== false)
       .sort((a, b) => (b.recent_at || "").localeCompare(a.recent_at || ""));
-    for (const { id, name } of recent.slice(0, 8)) quick.append(button(`+ ${name}`, () => this.action(async () => {
+    for (const { id, name } of recent) quick.append(button(`+ ${name}`, () => this.action(async () => {
       const result = await this.call("log_event", { activity_type: id });
       this.undo = { table: "event", id: result.id };
     }, `Logged ${name}.`)));
-    return quick;
+    return recent.length ? add(element("section"), element("h3", "Quick log"), quick) : null;
   }
 
   scoreBoard(row) {
@@ -467,8 +470,9 @@ class VitalityCard extends HTMLElement {
 
   loggingPanel() {
     const options = this.typesOptions();
+    const quick = this.quickLog();
     return add(element("div"),
-      ...(options.length ? [add(element("section"), element("h3", "Quick log"), this.quickLog())] : []),
+      ...(quick ? [quick] : []),
       add(element("div", null, { class: "columns" }),
         add(element("section"), element("h3", "Perceived Energy"), this.recordForm("energy")),
         add(element("section"), element("h3", "Rate mood"), this.recordForm("mood")),
